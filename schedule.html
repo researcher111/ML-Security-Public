@@ -40,6 +40,7 @@
   .sw.network  { background: #f0e8d8; border-color: #d4c896; }
   .sw.setup    { background: #e8efe6; border-color: #c0d4b4; }
   .sw.midterm  { background: #fbe7a8; border-color: #e0c476; }
+  .sw.present  { background: #ece3f5; border-color: #dabfdf; }
   .sw.holiday  { background: #ececea; border-color: #cfcecb; }
   .sw.due      { background: #fde0d2; border-color: #e8b69e; }
 
@@ -119,6 +120,7 @@
   tr.day-deploy  td.topic { border-left: 3px solid #8a4c9a; padding-left: 10px; }
   tr.day-defend  td.topic { border-left: 3px solid #3a8a5b; padding-left: 10px; }
   tr.day-network td.topic { border-left: 3px solid #b8851a; padding-left: 10px; }
+  tr.day-present td.topic { border-left: 3px solid #8a4c9a; padding-left: 10px; }
   tr.day-setup   td.topic { border-left: 3px solid #5a8c54; padding-left: 10px; }
   tr.day-midterm td.topic { border-left: 3px solid #b8851a; padding-left: 10px; }
   tr.day-midterm td       { background: #fbf6ee; }
@@ -143,6 +145,7 @@
   .type-tag.net { background: #f0e8d8; color: #6b4d05; }
   .type-tag.set { background: #e8efe6; color: #3a6b3a; }
   .type-tag.mid { background: #fbe7a8; color: #6b4d05; }
+  .type-tag.prs { background: #ece3f5; color: #5b3a7a; }
   .type-tag.hol { background: #ececea; color: #6b6660; }
 
   .part-tag {
@@ -189,15 +192,22 @@
   <p class="subtitle">Machine Learning in Systems and Network Security · DS 6042 · Daniel G. Graham, UVA School of Data Science</p>
 
   <div class="sched-intro">
-    <p><strong>Daily rhythm.</strong> The course runs M–F from June 15 to July 10 — eighteen class days. Each day one lab: students read the lede + §1 anatomy callout before class, the in-class hour walks the build/break/secure arc, the remaining time becomes the assignment. The midterm is Friday June 26, after the agent/MCP arc closes. Two federal holidays fall in the window — Juneteenth (Fri Jun 19) and Independence Day observed (Fri Jul 3).</p>
-    <p><strong>Quizzes.</strong> Each lab day ends with a short <em>in-class Canvas quiz in the last 15 minutes</em>: 7–10 questions covering the lab's anatomy, attacks, and secure phase. The quiz files in <a href="quizzes/"><code>quizzes/</code></a> are text2qti markdown — convert with one command and upload to Canvas as a QTI zip.</p>
+    <p class="lede">
+      This course is built around sixteen labs. Together they answer a
+      question every security course should ask, and most don't:
+      <em>what does it actually mean to attack — or defend — a system that runs machine learning?</em>
+      You start with a first hands-on exploit on the cyber range, move on to
+      small but real LLMs and agents, then work through the core AI-security attacks: on agents, on MCP,
+      and on RAG. From there you harden real deployments, both server-side and in the cloud, and finish
+      with the classic machine-learning intrusion-detection lab the field began with.
+      Every lab has the same shape: <strong>build the smallest version, attack it, then fix it.</strong>
+    </p>
+    <p><strong>Daily rhythm.</strong> The course runs M–F from June 15 to July 10 — eighteen class days. The midterm is Thursday June 25, after the agent/MCP arc closes, and the final day (Fri Jul 10) is group capstone presentations. Two federal holidays fall in the window — Juneteenth (Fri Jun 19) and Independence Day observed (Fri Jul 3).</p>
+    <p><strong>Quizzes.</strong> Each lab day ends with a short <em>in-class Canvas quiz in the last 15 minutes</em>: 7–10 questions covering the lab's anatomy, attacks, and secure phase.</p>
   </div>
 
   <div class="home-bar">
     <a href="index.html">← Back to book</a>
-    <a href="labs.html">Lab status table</a>
-    <a href="quizzes/">Quizzes folder</a>
-    <a href="syllabus.md">Syllabus</a>
   </div>
 
   <div class="legend">
@@ -209,6 +219,7 @@
     <span class="chip"><span class="sw defend"></span>Defend</span>
     <span class="chip"><span class="sw deploy"></span>Deploy</span>
     <span class="chip"><span class="sw midterm"></span>Midterm</span>
+    <span class="chip"><span class="sw present"></span>Presentations</span>
     <span class="chip"><span class="sw holiday"></span>No class</span>
     <span class="chip"><span class="sw due"></span>Quiz due in-class</span>
   </div>
@@ -241,23 +252,9 @@
         </td>
       </tr>
 
-      <tr class="day-network">
+      <tr class="day-build">
         <td class="date">Tue Jun 16</td>
         <td class="day">Day 2</td>
-        <td class="topic">
-          <span class="type-tag net">Network</span>
-          <a href="labs/lab-01/packets.html">Lab 01 — Watch the packets · ARP, Wireshark</a>
-          <span class="part-tag">packets, MAC/IP, ARP spoofing, detection in 20 lines of Python</span>
-        </td>
-        <td class="due">
-          <span class="due-pill in-class">In class · last 15 min</span>
-          Canvas quiz: <a href="quizzes/lab-01-quiz.md">Lab 01 (packets/ARP)</a>
-        </td>
-      </tr>
-
-      <tr class="day-build">
-        <td class="date">Wed Jun 17</td>
-        <td class="day">Day 3</td>
         <td class="topic">
           <span class="type-tag bld">Build</span>
           <a href="labs/lab-02/microgpt.html">Lab 02 — microGPT walkthrough</a>
@@ -270,8 +267,8 @@
       </tr>
 
       <tr class="day-build">
-        <td class="date">Thu Jun 18</td>
-        <td class="day">Day 4</td>
+        <td class="date">Wed Jun 17</td>
+        <td class="day">Day 3</td>
         <td class="topic">
           <span class="type-tag bld">Build</span>
           <a href="labs/lab-03/nanochat.html">Lab 03 — Train nanochat on Rivanna</a>
@@ -280,6 +277,20 @@
         <td class="due">
           <span class="due-pill in-class">In class · last 15 min</span>
           Canvas quiz: <a href="quizzes/lab-03-quiz.md">Lab 03 (nanochat)</a>
+        </td>
+      </tr>
+
+      <tr class="day-build">
+        <td class="date">Thu Jun 18</td>
+        <td class="day">Day 4</td>
+        <td class="topic">
+          <span class="type-tag bld">Build</span>
+          <a href="labs/lab-04/microagent.html">Lab 04 — microagent walkthrough</a>
+          <span class="part-tag">smallest readable ReAct agent · the build half of the agent arc</span>
+        </td>
+        <td class="due">
+          <span class="due-pill in-class">In class · last 15 min</span>
+          Canvas quiz: <a href="quizzes/lab-04-quiz.md">Lab 04 (microagent)</a>
         </td>
       </tr>
 
@@ -294,25 +305,11 @@
       </tr>
 
       <!-- ============================ WEEK 2 ============================ -->
-      <tr class="week-row"><td colspan="4"><span class="wk-name">Week 2</span><span class="wk-range">Jun 22 – Jun 26 · midterm Friday</span></td></tr>
-
-      <tr class="day-build">
-        <td class="date">Mon Jun 22</td>
-        <td class="day">Day 5</td>
-        <td class="topic">
-          <span class="type-tag bld">Build</span>
-          <a href="labs/lab-04/microagent.html">Lab 04 — microagent walkthrough</a>
-          <span class="part-tag">smallest readable ReAct agent · the build half of the agent arc</span>
-        </td>
-        <td class="due">
-          <span class="due-pill in-class">In class · last 15 min</span>
-          Canvas quiz: <a href="quizzes/lab-04-quiz.md">Lab 04 (microagent)</a>
-        </td>
-      </tr>
+      <tr class="week-row"><td colspan="4"><span class="wk-name">Week 2</span><span class="wk-range">Jun 22 – Jun 26 · midterm Thursday</span></td></tr>
 
       <tr class="day-attack">
-        <td class="date">Tue Jun 23</td>
-        <td class="day">Day 6</td>
+        <td class="date">Mon Jun 22</td>
+        <td class="day">Day 5</td>
         <td class="topic">
           <span class="type-tag atk">Attack</span>
           <a href="labs/lab-05/attack-agents.html">Lab 05 — Attacking AI agents</a>
@@ -325,8 +322,8 @@
       </tr>
 
       <tr class="day-build">
-        <td class="date">Wed Jun 24</td>
-        <td class="day">Day 7</td>
+        <td class="date">Tue Jun 23</td>
+        <td class="day">Day 6</td>
         <td class="topic">
           <span class="type-tag bld">Build</span>
           <a href="labs/lab-06/micromcp.html">Lab 06 — microMCP walkthrough</a>
@@ -339,8 +336,8 @@
       </tr>
 
       <tr class="day-attack">
-        <td class="date">Thu Jun 25</td>
-        <td class="day">Day 8</td>
+        <td class="date">Wed Jun 24</td>
+        <td class="day">Day 7</td>
         <td class="topic">
           <span class="type-tag atk">Attack</span>
           <a href="labs/lab-07/attack-mcp.html">Lab 07 — Attacking MCP</a>
@@ -353,8 +350,8 @@
       </tr>
 
       <tr class="day-midterm">
-        <td class="date">Fri Jun 26</td>
-        <td class="day">Day 9</td>
+        <td class="date">Thu Jun 25</td>
+        <td class="day">Day 8</td>
         <td class="topic">
           <span class="type-tag mid">Midterm</span>
           <strong>Midterm exam</strong>
@@ -366,12 +363,9 @@
         </td>
       </tr>
 
-      <!-- ============================ WEEK 3 ============================ -->
-      <tr class="week-row"><td colspan="4"><span class="wk-name">Week 3</span><span class="wk-range">Jun 29 – Jul 3 · holiday Friday</span></td></tr>
-
       <tr class="day-applied">
-        <td class="date">Mon Jun 29</td>
-        <td class="day">Day 10</td>
+        <td class="date">Fri Jun 26</td>
+        <td class="day">Day 9</td>
         <td class="topic">
           <span class="type-tag app">Applied</span>
           <a href="labs/lab-08/osint.html">Lab 08 — OSINT datasets</a>
@@ -383,9 +377,12 @@
         </td>
       </tr>
 
+      <!-- ============================ WEEK 3 ============================ -->
+      <tr class="week-row"><td colspan="4"><span class="wk-name">Week 3</span><span class="wk-range">Jun 29 – Jul 3 · holiday Friday</span></td></tr>
+
       <tr class="day-applied">
-        <td class="date">Tue Jun 30</td>
-        <td class="day">Day 11</td>
+        <td class="date">Mon Jun 29</td>
+        <td class="day">Day 10</td>
         <td class="topic">
           <span class="type-tag app">Applied</span>
           <a href="labs/lab-09/agentic.html">Lab 09 — Agentic engineering</a>
@@ -398,8 +395,8 @@
       </tr>
 
       <tr class="day-applied">
-        <td class="date">Wed Jul 1</td>
-        <td class="day">Day 12</td>
+        <td class="date">Tue Jun 30</td>
+        <td class="day">Day 11</td>
         <td class="topic">
           <span class="type-tag app">Applied</span>
           <a href="labs/lab-10/pentest.html">Lab 10 — Agentic pentesting</a>
@@ -412,8 +409,8 @@
       </tr>
 
       <tr class="day-defend">
-        <td class="date">Thu Jul 2</td>
-        <td class="day">Day 13</td>
+        <td class="date">Wed Jul 1</td>
+        <td class="day">Day 12</td>
         <td class="topic">
           <span class="type-tag def">Defend</span>
           <a href="labs/lab-11/unaligned.html">Lab 11 — Unaligned models</a>
@@ -422,6 +419,20 @@
         <td class="due">
           <span class="due-pill in-class">In class · last 15 min</span>
           Canvas quiz: <a href="quizzes/lab-11-quiz.md">Lab 11 (alignment)</a>
+        </td>
+      </tr>
+
+      <tr class="day-deploy">
+        <td class="date">Thu Jul 2</td>
+        <td class="day">Day 13</td>
+        <td class="topic">
+          <span class="type-tag dep">Deploy</span>
+          <a href="labs/lab-12/server.html">Lab 12 — Secure deployment · servers</a>
+          <span class="part-tag">nine-layer stack · STRIDE per layer · vLLM hardening</span>
+        </td>
+        <td class="due">
+          <span class="due-pill in-class">In class · last 15 min</span>
+          Canvas quiz: <a href="quizzes/lab-12-quiz.md">Lab 12 (server deployment)</a>
         </td>
       </tr>
 
@@ -436,25 +447,11 @@
       </tr>
 
       <!-- ============================ WEEK 4 ============================ -->
-      <tr class="week-row"><td colspan="4"><span class="wk-name">Week 4</span><span class="wk-range">Jul 6 – Jul 10 · final week</span></td></tr>
+      <tr class="week-row"><td colspan="4"><span class="wk-name">Week 4</span><span class="wk-range">Jul 6 – Jul 10 · presentations Friday</span></td></tr>
 
       <tr class="day-deploy">
         <td class="date">Mon Jul 6</td>
         <td class="day">Day 14</td>
-        <td class="topic">
-          <span class="type-tag dep">Deploy</span>
-          <a href="labs/lab-12/server.html">Lab 12 — Secure deployment · servers</a>
-          <span class="part-tag">nine-layer stack · STRIDE per layer · vLLM hardening</span>
-        </td>
-        <td class="due">
-          <span class="due-pill in-class">In class · last 15 min</span>
-          Canvas quiz: <a href="quizzes/lab-12-quiz.md">Lab 12 (server deployment)</a>
-        </td>
-      </tr>
-
-      <tr class="day-deploy">
-        <td class="date">Tue Jul 7</td>
-        <td class="day">Day 15</td>
         <td class="topic">
           <span class="type-tag dep">Deploy</span>
           <a href="labs/lab-13/cloud.html">Lab 13 — Secure deployment · cloud</a>
@@ -467,8 +464,8 @@
       </tr>
 
       <tr class="day-build">
-        <td class="date">Wed Jul 8</td>
-        <td class="day">Day 16</td>
+        <td class="date">Tue Jul 7</td>
+        <td class="day">Day 15</td>
         <td class="topic">
           <span class="type-tag bld">Build</span>
           <a href="labs/lab-14/microrag.html">Lab 14 — microRAG walkthrough</a>
@@ -481,8 +478,8 @@
       </tr>
 
       <tr class="day-attack">
-        <td class="date">Thu Jul 9</td>
-        <td class="day">Day 17</td>
+        <td class="date">Wed Jul 8</td>
+        <td class="day">Day 16</td>
         <td class="topic">
           <span class="type-tag atk">Attack</span>
           <a href="labs/lab-15/attack-rag.html">Lab 15 — Attacking RAG</a>
@@ -495,8 +492,8 @@
       </tr>
 
       <tr class="day-network">
-        <td class="date">Fri Jul 10</td>
-        <td class="day">Day 18</td>
+        <td class="date">Thu Jul 9</td>
+        <td class="day">Day 17</td>
         <td class="topic">
           <span class="type-tag net">Network</span>
           <a href="labs/lab-16/nids.html">Lab 16 — microNIDS · build → break → secure</a>
@@ -508,23 +505,59 @@
         </td>
       </tr>
 
+      <tr class="day-present">
+        <td class="date">Fri Jul 10</td>
+        <td class="day">Day 18</td>
+        <td class="topic">
+          <span class="type-tag prs">Capstone</span>
+          <strong>Group project presentations</strong>
+          <span class="part-tag">each team demos its capstone — the paper-based lab it built, the attack, the defense</span>
+        </td>
+        <td class="due">
+          <span class="due-pill exam">In class · full session</span>
+          Capstone demos — see grade structure
+        </td>
+      </tr>
+
     </tbody>
   </table>
 
   <div class="footnote">
     <h3>Grade structure</h3>
-    <ul>
-      <li><strong>Daily Canvas quizzes</strong> — 17 quizzes × 7-10 points each, in-class last 15 min, lowest 2 dropped. Worth <strong>30%</strong> of the course grade.</li>
-      <li><strong>Lab assignments</strong> — each lab ships an assignment; the assignment is typically the "extend the build" or "secure the break" task. Worth <strong>30%</strong>.</li>
-      <li><strong>Midterm</strong> — Friday June 26, in-class. Covers Labs 0–7. Worth <strong>20%</strong>.</li>
-      <li><strong>Capstone project</strong> — extend any one lab into a polished writeup or a working production-shape variant. Due at the end of Week 4. Worth <strong>20%</strong>.</li>
-    </ul>
+    <table class="schedule">
+      <thead>
+        <tr><th>Component</th><th>Details</th><th>Weight</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Daily Canvas quizzes</strong></td>
+          <td>16 quizzes × 7–10 points each, in-class in the last 15 minutes, lowest 2 dropped.</td>
+          <td>30%</td>
+        </tr>
+        <tr>
+          <td><strong>Lab assignments</strong></td>
+          <td>Each lab ships an assignment, typically the "extend the build" or "secure the break" task.</td>
+          <td>30%</td>
+        </tr>
+        <tr>
+          <td><strong>Midterm</strong></td>
+          <td>Thursday June 25, in-class. Covers Labs 0–7.</td>
+          <td>20%</td>
+        </tr>
+        <tr>
+          <td><strong>Capstone project</strong></td>
+          <td>Pick a research paper published within the last year and build a lab based on its idea, in the same build/break/fix shape as the labs you've been doing. Due at the end of Week 4 and presented in class on Fri Jul 10.</td>
+          <td>20%</td>
+        </tr>
+      </tbody>
+    </table>
 
     <h3>Holiday and exception notes</h3>
     <ul>
-      <li><strong>Fri Jun 19 — Juneteenth.</strong> No class. Material missed (would have been Lab 04 microagent) is moved to Mon Jun 22; the agent/MCP arc compresses from five days into four. Plan accordingly.</li>
-      <li><strong>Fri Jul 3 — Independence Day observed.</strong> No class. July 4 is a Saturday in 2026; the federal observance moves to Friday. Material missed (would have been Lab 12 server deployment) is moved to Mon Jul 6.</li>
-      <li><strong>Fri Jun 26 — Midterm.</strong> Full class session for the exam. The exam covers Labs 0–7 inclusive; the midterm-prep quiz is reviewed Thu Jun 25 at the end of class.</li>
+      <li><strong>Fri Jun 19 — Juneteenth.</strong> No class. The week is arranged around it: Thu Jun 18 closes the build run with Lab 04 (microagent), and the attack/MCP sequence resumes Mon Jun 22 with Lab 05. Plan accordingly.</li>
+      <li><strong>Fri Jul 3 — Independence Day observed.</strong> No class. July 4 is a Saturday in 2026; the federal observance moves to Friday. Lab 12 (server deployment) lands Thu Jul 2, and its cloud sequel (Lab 13) resumes Mon Jul 6.</li>
+      <li><strong>Thu Jun 25 — Midterm.</strong> Full class session for the exam. The exam covers Labs 0–7 inclusive; the midterm-prep quiz is reviewed Wed Jun 24 at the end of class, after Lab 07.</li>
+      <li><strong>Fri Jul 10 — Group presentations.</strong> Final class session for the capstone project demos. This day opened up when the former Lab 01 (ARP / Wireshark) was retired — ARP spoofing won't run on the cyber range — and the remaining labs slid one day earlier.</li>
     </ul>
 
     <h3>Reading ahead</h3>

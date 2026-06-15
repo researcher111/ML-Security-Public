@@ -161,13 +161,14 @@
   <p class="subtitle">DS 6042 · Summer 2026 · Daniel G. Graham, UVA School of Data Science</p>
 
   <p class="lede">
-    Seventeen labs. Each one is a short build, a short break, a short fix. Together they answer the
-    question every security course should answer and most don't:
+    This course is built around sixteen labs. Together they answer a
+    question every security course should ask, and most don't:
     <em>what does it actually mean to attack — or defend — a system that runs machine learning?</em>
-    The arc runs from network primitives (ARP, packet capture) through small-but-real LLMs and agents,
-    through the canonical AI-security taxonomy (agent attacks, MCP attacks, RAG attacks),
-    to deployment hardening (server-side and cloud), to the classical ML-NIDS lab the field started with.
-    Every lab follows the same shape: <strong>read the smallest version, attack it, fix it.</strong>
+    You start with a first hands-on exploit on the cyber range, move on to
+    small but real LLMs and agents, then work through the core AI-security attacks: on agents, on MCP,
+    and on RAG. From there you harden real deployments, both server-side and in the cloud, and finish
+    with the classic machine-learning intrusion-detection lab the field began with.
+    Every lab has the same shape: <strong>build the smallest version, attack it, then fix it.</strong>
   </p>
 
   <div class="lede-callout">
@@ -180,10 +181,6 @@
 
   <div class="pillar">
     <a class="primary" href="schedule.html">Day-by-day schedule</a>
-    <a href="labs.html">All labs · status table</a>
-    <a href="quizzes/">Canvas quizzes</a>
-    <a href="syllabus.md">Syllabus</a>
-    <a href="resources.md">Resources</a>
   </div>
 
   <!-- ====================== MODULE · ORIENTATION ====================== -->
@@ -198,21 +195,9 @@
     </div>
   </section>
 
-  <!-- ====================== MODULE · NETWORK ====================== -->
-  <section class="module">
-    <h3>Module 01<span class="module-title">Network primitives</span></h3>
-    <div class="pair-grid single">
-      <a class="lab-card" href="labs/lab-01/packets.html">
-        <div class="lab-head"><span class="lab-num">Lab 01</span><span class="lab-type network">Network</span></div>
-        <div class="lab-title">Watch the packets · ARP, Wireshark</div>
-        <div class="lab-sub">How the internet actually moves data. Run an ARP spoofing attack, read the traffic in Wireshark, detect with a 20-line Python script.</div>
-      </a>
-    </div>
-  </section>
-
   <!-- ====================== MODULE · LLM FOUNDATIONS ====================== -->
   <section class="module">
-    <h3>Module 02<span class="module-title">LLM foundations</span></h3>
+    <h3>Module 01<span class="module-title">LLM foundations</span></h3>
     <div class="pair-grid">
       <a class="lab-card" href="labs/lab-02/microgpt.html">
         <div class="lab-head"><span class="lab-num">Lab 02</span><span class="lab-type build">Build</span></div>
@@ -229,7 +214,7 @@
 
   <!-- ====================== MODULE · AGENTS ====================== -->
   <section class="module">
-    <h3>Module 03<span class="module-title">AI agents · build → break</span></h3>
+    <h3>Module 02<span class="module-title">AI agents · build → break</span></h3>
     <div class="pair-grid">
       <a class="lab-card" href="labs/lab-04/microagent.html">
         <div class="lab-head"><span class="lab-num">Lab 04</span><span class="lab-type build">Build</span></div>
@@ -246,7 +231,7 @@
 
   <!-- ====================== MODULE · MCP ====================== -->
   <section class="module">
-    <h3>Module 04<span class="module-title">Model Context Protocol · build → break</span></h3>
+    <h3>Module 03<span class="module-title">Model Context Protocol · build → break</span></h3>
     <div class="pair-grid">
       <a class="lab-card" href="labs/lab-06/micromcp.html">
         <div class="lab-head"><span class="lab-num">Lab 06</span><span class="lab-type build">Build</span></div>
@@ -263,7 +248,7 @@
 
   <!-- ====================== MODULE · APPLIED TOOLING ====================== -->
   <section class="module">
-    <h3>Module 05<span class="module-title">Applied tooling · OSINT, agents, pentest</span></h3>
+    <h3>Module 04<span class="module-title">Applied tooling · OSINT, agents, pentest</span></h3>
     <div class="pair-grid triple">
       <a class="lab-card" href="labs/lab-08/osint.html">
         <div class="lab-head"><span class="lab-num">Lab 08</span><span class="lab-type applied">Applied</span></div>
@@ -285,7 +270,7 @@
 
   <!-- ====================== MODULE · ALIGNMENT ====================== -->
   <section class="module">
-    <h3>Module 06<span class="module-title">Alignment &amp; refusal</span></h3>
+    <h3>Module 05<span class="module-title">Alignment &amp; refusal</span></h3>
     <div class="pair-grid single">
       <a class="lab-card" href="labs/lab-11/unaligned.html">
         <div class="lab-head"><span class="lab-num">Lab 11</span><span class="lab-type defend">Defend</span></div>
@@ -297,7 +282,7 @@
 
   <!-- ====================== MODULE · DEPLOYMENT ====================== -->
   <section class="module">
-    <h3>Module 07<span class="module-title">Secure deployment</span></h3>
+    <h3>Module 06<span class="module-title">Secure deployment</span></h3>
     <div class="pair-grid">
       <a class="lab-card" href="labs/lab-12/server.html">
         <div class="lab-head"><span class="lab-num">Lab 12</span><span class="lab-type deploy">Deploy</span></div>
@@ -314,7 +299,7 @@
 
   <!-- ====================== MODULE · RAG ====================== -->
   <section class="module">
-    <h3>Module 08<span class="module-title">Retrieval-Augmented Generation · build → break</span></h3>
+    <h3>Module 07<span class="module-title">Retrieval-Augmented Generation · build → break</span></h3>
     <div class="pair-grid">
       <a class="lab-card" href="labs/lab-14/microrag.html">
         <div class="lab-head"><span class="lab-num">Lab 14</span><span class="lab-type build">Build</span></div>
@@ -331,7 +316,7 @@
 
   <!-- ====================== MODULE · CLASSICAL ML-NIDS ====================== -->
   <section class="module">
-    <h3>Module 09<span class="module-title">Classical ML in network security</span></h3>
+    <h3>Module 08<span class="module-title">Classical ML in network security</span></h3>
     <div class="pair-grid single">
       <a class="lab-card" href="labs/lab-16/nids.html">
         <div class="lab-head"><span class="lab-num">Lab 16</span><span class="lab-type network">Network</span></div>
