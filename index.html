@@ -161,24 +161,29 @@
   <p class="subtitle">DS 6042 · Summer 2026 · Daniel G. Graham, UVA School of Data Science</p>
 
   <p class="lede">
-    This course is built around sixteen labs. Together they explore one central question:
+    Seventeen labs. Each one is a short build, a short break, a short fix. Together they answer the
+    question every security course should answer and most don't:
     <em>what does it actually mean to attack — or defend — a system that runs machine learning?</em>
-    You start with network basics like ARP and packet capture, move on to
-    small but real LLMs and agents, then work through the core AI-security attacks: on agents, on MCP,
-    and on RAG. From there you harden real deployments, both server-side and in the cloud, and finish
-    with the classic machine-learning intrusion-detection lab the field began with.
-    Every lab has the same shape: <strong>build the smallest version, attack it, then fix it.</strong>
+    The arc runs from network primitives (ARP, packet capture) through small-but-real LLMs and agents,
+    through the canonical AI-security taxonomy (agent attacks, MCP attacks, RAG attacks),
+    to deployment hardening (server-side and cloud), to the classical ML-NIDS lab the field started with.
+    Every lab follows the same shape: <strong>read the smallest version, attack it, fix it.</strong>
   </p>
 
   <div class="lede-callout">
     <span class="tag">How to use this book</span>
-    <p>Open a lab page from the table below.
+    <p>Open a lab page from the table below and read the lede + the §1 anatomy callout before doing anything else.
+       Then walk the build code while the file is open. Run the attack scripts. Read the secure-phase fixes; argue with them.
        The labs are designed for in-class use (≈2 hours apiece) and the leftover time becomes the assignment.</p>
     <p><a href="schedule.html"><strong>View the day-by-day Summer 2026 schedule →</strong></a></p>
   </div>
 
   <div class="pillar">
     <a class="primary" href="schedule.html">Day-by-day schedule</a>
+    <a href="labs.html">All labs · status table</a>
+    <a href="quizzes/">Canvas quizzes</a>
+    <a href="syllabus.md">Syllabus</a>
+    <a href="resources.md">Resources</a>
   </div>
 
   <!-- ====================== MODULE · ORIENTATION ====================== -->
@@ -187,8 +192,8 @@
     <div class="pair-grid single">
       <a class="lab-card" href="labs/lab-00/vsftpd.html">
         <div class="lab-head"><span class="lab-num">Lab 00</span><span class="lab-type setup">Setup</span></div>
-        <div class="lab-title">Your first exploit · vsftpd 2.3.4</div>
-        <div class="lab-sub">Team setup, cyber-range onboarding, end-to-end walkthrough of the vsftpd backdoor. The orientation lab — frames everything that follows.</div>
+        <div class="lab-title">Your first exploit · ProFTPd mod_copy</div>
+        <div class="lab-sub">Team setup, cyber-range onboarding, end-to-end walkthrough of CVE-2015-3306 on Metasploitable 3 (manual <code>SITE CPFR/CPTO</code> → webshell via Apache, then the Metasploit module). The orientation lab — frames everything that follows.</div>
       </a>
     </div>
   </section>
