@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>microgpt — a guided, illustrated walkthrough</title>
 <link rel="stylesheet" href="../_shared/lab-base.css?v=5">
-<link rel="stylesheet" href="styles.css?v=57">
+<link rel="stylesheet" href="styles.css?v=59">
 <!-- KaTeX for math -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
@@ -812,6 +812,43 @@ print(b.grad)   # tensor(2.)</code></pre>
 <p>This is the same algorithm that PyTorch's <code>loss.backward()</code> runs, just on scalars instead of tensors (arrays of scalars) — algorithmically identical, significantly smaller and simpler, but a lot less efficient.</p>
 
 <p>Let's spell out what <code>backward()</code> gives us. Autograd calculated that if <code>L = a*b + a</code>, with <code>a=2</code> and <code>b=3</code>, then <code>a.grad = 4.0</code>. This is telling us about the local influence of <code>a</code> on <code>L</code>: if you wiggle <code>a</code>, in what direction is <code>L</code> changing? The derivative of <code>L</code> w.r.t. <code>a</code> is 4.0, meaning that if we increase <code>a</code> by a tiny amount (say 0.001), <code>L</code> would increase by about 4× that (0.004). Similarly, <code>b.grad = 2.0</code> means the same nudge to <code>b</code> would increase <code>L</code> by about 2× that. These gradients tell us the <em>direction</em> (positive or negative) and the <em>steepness</em> (magnitude) of each input's influence on the final output (the loss). This lets us iteratively nudge the parameters of our neural network to lower the loss, and hence improve its predictions.</p>
+
+<div class="viz" id="viz-gd-steps">
+  <div class="viz-title">Gradient descent · w and b chase the target</div>
+  <div class="viz-description">
+    Case 4 above computed the gradients for one step: <code>∂loss/∂b = −6</code> and (chaining through <code>x</code>) <code>∂loss/∂w = 2·err·x = −18</code>. Now we <em>repeat</em> the step. <code>x = 3</code> and the target <code>y = 10</code> are fixed; each step nudges the two parameters <strong>against</strong> their gradient — <code>w ← w − lr·∂loss/∂w</code> — and you watch the prediction <code>ŷ</code> climb toward the target while the loss shrinks. The nudge is just the gradient multiplied by the learning rate. Click <strong>Next step</strong> a few times.
+  </div>
+
+  <div class="gd-setup">
+    <span>x = <strong>3</strong></span>
+    <span>target y = <strong>10</strong></span>
+    <span>learning rate = <strong>0.02</strong></span>
+  </div>
+
+  <div class="gd-graph-label">Computation graph — node values and local gradients (<code>∂</code>) recompute every step:</div>
+  <svg id="gd-graph" class="gd-graph" viewBox="0 0 640 300" preserveAspectRatio="xMidYMid meet" aria-hidden="true"></svg>
+
+  <svg id="gd-track" class="gd-track" viewBox="0 0 600 92" preserveAspectRatio="xMidYMid meet" aria-hidden="true"></svg>
+
+  <div class="gd-forward" id="gd-forward"></div>
+
+  <div class="gd-cards">
+    <div class="gd-card" id="gd-card-w"></div>
+    <div class="gd-card" id="gd-card-b"></div>
+  </div>
+
+  <div class="gd-loss-wrap">
+    <span class="gd-loss-label">loss = err²</span>
+    <div class="gd-loss-track"><div class="gd-loss-fill" id="gd-loss-fill"></div></div>
+    <span class="gd-loss-val" id="gd-loss-val"></span>
+  </div>
+
+  <div class="controls gd-controls">
+    <button class="btn primary" id="gd-next">Next step ▸</button>
+    <button class="btn" id="gd-reset">↺ Reset</button>
+    <span class="gd-step" id="gd-step">step 0 / 4</span>
+  </div>
+</div>
 
 <!-- ============================================================ -->
 <h2 id="architecture">Architecture</h2>
@@ -2409,7 +2446,7 @@ DS 6042 — Lab 02 · adapted from Andrej Karpathy, <a href="https://karpathy.ai
 </main>
 </div>
 
-<script src="../_shared/lab-base.js?v=5"></script>
-<script src="viz.js?v=77"></script>
+<script src="../_shared/lab-base.js?v=6"></script>
+<script src="viz.js?v=79"></script>
 </body>
 </html>

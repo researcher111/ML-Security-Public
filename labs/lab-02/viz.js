@@ -5669,3 +5669,154 @@ probs = softmax(logits)
   window.addEventListener('scroll', updateActiveToc, { passive: true });
   updateActiveToc();
 })();
+
+
+/* ============================================================
+ * Widget · gradient descent over multiple steps (#viz-gd-steps)
+ *   Reuses the Case-4 toy (x=3, y=10, w=2, b=1). Each click does one
+ *   SGD step: forward → grads (2·err·x, 2·err) → update w,b by −lr·grad.
+ *   Shows ŷ climbing to the target and loss shrinking over 4 steps.
+ * ============================================================ */
+(function initGdSteps() {
+  'use strict';
+  var root = document.getElementById('viz-gd-steps');
+  if (!root) return;
+  var NS = 'http://www.w3.org/2000/svg';
+  function svg(name, attrs, parent, text) {
+    var n = document.createElementNS(NS, name);
+    if (attrs) for (var k in attrs) n.setAttribute(k, attrs[k]);
+    if (text != null) n.textContent = text;
+    if (parent) parent.appendChild(n);
+    return n;
+  }
+
+  var X = 3, Y = 10, LR = 0.02, MAXSTEP = 4, W0 = 2, B0 = 1, LOSS0 = 9;
+
+  var graph    = root.querySelector('#gd-graph');
+  var track    = root.querySelector('#gd-track');
+  var fwd      = root.querySelector('#gd-forward');
+  var cardW    = root.querySelector('#gd-card-w');
+  var cardB    = root.querySelector('#gd-card-b');
+  var lossFill = root.querySelector('#gd-loss-fill');
+  var lossVal  = root.querySelector('#gd-loss-val');
+  var stepEl   = root.querySelector('#gd-step');
+  var nextBtn  = root.querySelector('#gd-next');
+  var resetBtn = root.querySelector('#gd-reset');
+
+  var step, w, b, ghosts;
+
+  function f(n, d) { return n.toFixed(d == null ? 2 : d); }
+  function cls(n) { return n >= 0 ? 'gd-pos' : 'gd-neg'; }
+  function signed(n, d) { d = d == null ? 2 : d; return (n >= 0 ? '+' : '−') + Math.abs(n).toFixed(d); }
+  function gfmt(n) { var s = Number.isInteger(n) ? String(n) : n.toFixed(2); return s.replace('-', '−'); }
+
+  // ---- computation graph (mirrors Case 4) ----
+  var GR = 22;
+  var GNODES = {
+    w:    { x: 56,  y: 48,  label: 'w (param)' },
+    x:    { x: 56,  y: 120, label: 'x (data)' },
+    b:    { x: 56,  y: 200, label: 'b (param)' },
+    y:    { x: 56,  y: 266, label: 'y (target)' },
+    z:    { x: 222, y: 84,  label: 'z = w·x' },
+    yhat: { x: 376, y: 152, label: 'ŷ = z+b' },
+    err:  { x: 506, y: 212, label: 'err = ŷ−y' },
+    loss: { x: 604, y: 212, label: 'loss = err²' }
+  };
+  var GEDGES = [['w','z'],['x','z'],['z','yhat'],['b','yhat'],['yhat','err'],['y','err'],['err','loss']];
+  function drawGraph(vals, ed) {
+    graph.innerHTML = '';
+    var defs = svg('defs', null, graph);
+    var mk = svg('marker', { id: 'gd-arrow', viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 6, markerHeight: 6, orient: 'auto-start-reverse' }, defs);
+    svg('path', { d: 'M0 0 L10 5 L0 10 z', class: 'gd-arrowhead' }, mk);
+    GEDGES.forEach(function (e) {
+      var a = GNODES[e[0]], c = GNODES[e[1]];
+      var dx = c.x - a.x, dy = c.y - a.y, len = Math.hypot(dx, dy), ux = dx / len, uy = dy / len;
+      var x1 = a.x + ux * GR, y1 = a.y + uy * GR, x2 = c.x - ux * (GR + 6), y2 = c.y - uy * (GR + 6);
+      svg('line', { x1: x1, y1: y1, x2: x2, y2: y2, class: 'gd-edge', 'marker-end': 'url(#gd-arrow)' }, graph);
+      svg('text', { x: (x1 + x2) / 2, y: (y1 + y2) / 2 - 5, 'text-anchor': 'middle', class: 'gd-edge-label' }, graph, ed[e[0] + '>' + e[1]]);
+    });
+    Object.keys(GNODES).forEach(function (k) {
+      var n = GNODES[k];
+      svg('text', { x: n.x, y: n.y - GR - 7, 'text-anchor': 'middle', class: 'gd-node-label' }, graph, n.label);
+      svg('circle', { cx: n.x, cy: n.y, r: GR, class: 'gd-node' }, graph);
+      svg('text', { x: n.x, y: n.y + 4, 'text-anchor': 'middle', class: 'gd-node-val' }, graph, vals[k]);
+    });
+  }
+
+  // prediction track geometry
+  var AXMIN = 6, AXMAX = 11, AX0 = 48, AX1 = 552, AY = 60;
+  function px(v) { return AX0 + (v - AXMIN) / (AXMAX - AXMIN) * (AX1 - AX0); }
+
+  function drawTrack(yhat) {
+    track.innerHTML = '';
+    svg('line', { x1: AX0, y1: AY, x2: AX1, y2: AY, class: 'gd-axis' }, track);
+    for (var v = AXMIN; v <= AXMAX; v++) {
+      svg('line', { x1: px(v), y1: AY - 4, x2: px(v), y2: AY + 4, class: 'gd-tick' }, track);
+      svg('text', { x: px(v), y: AY + 19, 'text-anchor': 'middle' }, track, String(v));
+    }
+    // target marker
+    svg('line', { x1: px(Y), y1: AY - 28, x2: px(Y), y2: AY + 8, class: 'gd-target-line' }, track);
+    svg('text', { x: px(Y), y: AY - 32, 'text-anchor': 'middle', class: 'gd-target-label' }, track, 'target y = 10');
+    // ghosts (previous predictions)
+    ghosts.forEach(function (g) { svg('circle', { cx: px(g), cy: AY, r: 4, class: 'gd-ghost' }, track); });
+    // err connector ŷ → target
+    svg('line', { x1: px(yhat), y1: AY, x2: px(Y), y2: AY, class: 'gd-err' }, track);
+    // current prediction
+    svg('circle', { cx: px(yhat), cy: AY, r: 7, class: 'gd-yhat' }, track);
+    svg('text', { x: px(yhat), y: AY - 13, 'text-anchor': 'middle', class: 'gd-yhat-label' }, track, 'ŷ = ' + f(yhat));
+  }
+
+  function card(name, val, grad, gradExpr) {
+    var nudge = -LR * grad;
+    var next = val + nudge;
+    var atEnd = step >= MAXSTEP;
+    var html = '<div class="gd-card-head"><span class="gd-card-name">' + name + '</span>'
+      + '<span class="gd-card-transition">' + f(val) + (atEnd ? '' : ' → ' + f(next)) + '</span></div>'
+      + '<div class="gd-card-row">∂loss/∂' + name + ' = ' + gradExpr
+      + ' = <span class="' + cls(grad) + '">' + f(grad, 1) + '</span></div>';
+    if (atEnd) {
+      html += '<div class="gd-card-row gd-muted">4 steps done — ↺ Reset to replay</div>';
+    } else {
+      html += '<div class="gd-card-row">nudge = −lr·grad = <span class="gd-nudge">−0.02 × (' + f(grad, 1) + ')</span> = <span class="' + cls(nudge) + '">' + signed(nudge) + '</span></div>'
+        + '<div class="gd-card-row gd-next-row">' + name + ': ' + f(val) + ' ' + (nudge >= 0 ? '+' : '−') + ' ' + Math.abs(nudge).toFixed(2) + ' = <span class="gd-num">' + f(next) + '</span></div>';
+    }
+    return html;
+  }
+
+  function render() {
+    var yhat = w * X + b, err = yhat - Y, loss = err * err;
+    var gw = 2 * err * X, gb = 2 * err;
+    var z = w * X;
+    drawGraph(
+      { w: gfmt(w), x: gfmt(X), b: gfmt(b), y: gfmt(Y), z: gfmt(z), yhat: gfmt(yhat), err: gfmt(err), loss: gfmt(loss) },
+      { 'w>z': '∂=' + gfmt(X), 'x>z': '∂=' + gfmt(w), 'z>yhat': '∂=1', 'b>yhat': '∂=1', 'yhat>err': '∂=1', 'y>err': '∂=−1', 'err>loss': '∂=' + gfmt(gb) }
+    );
+    drawTrack(yhat);
+    fwd.innerHTML =
+      'ŷ = w·x + b = <span class="gd-num">' + f(w) + '</span>·3 + <span class="gd-num">' + f(b) + '</span> = <span class="gd-num">' + f(yhat) + '</span>'
+      + '<span class="gd-dot">·</span>err = ŷ − y = <span class="gd-num ' + cls(err) + '">' + f(err) + '</span>'
+      + '<span class="gd-dot">·</span>loss = err² = <span class="gd-num">' + f(loss) + '</span>';
+    cardW.innerHTML = card('w', w, gw, '2·err·x');
+    cardB.innerHTML = card('b', b, gb, '2·err');
+    lossFill.style.width = Math.max(2, loss / LOSS0 * 100) + '%';
+    lossVal.textContent = f(loss);
+    stepEl.textContent = 'step ' + step + ' / ' + MAXSTEP;
+    nextBtn.disabled = step >= MAXSTEP;
+  }
+
+  function next() {
+    if (step >= MAXSTEP) return;
+    var yhat = w * X + b, err = yhat - Y;
+    ghosts.push(yhat);
+    w = w - LR * (2 * err * X);
+    b = b - LR * (2 * err);
+    step++;
+    render();
+  }
+
+  function reset() { step = 0; w = W0; b = B0; ghosts = []; render(); }
+
+  nextBtn.addEventListener('click', next);
+  resetBtn.addEventListener('click', reset);
+  reset();
+})();

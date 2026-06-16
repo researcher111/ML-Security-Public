@@ -3299,3 +3299,74 @@ svg [data-block].block-hl {
 @media (max-width: 760px) {
   .bycroft-frame-wrap { aspect-ratio: auto; min-height: 480px; }
 }
+
+/* ============================================================
+   Gradient-descent multi-step widget (#viz-gd-steps)
+   ============================================================ */
+.gd-setup {
+  display: flex; gap: 20px; flex-wrap: wrap; justify-content: center;
+  font-family: var(--mono); font-size: 13px; color: var(--ink-mute);
+  margin: 6px 0 12px;
+}
+.gd-setup strong { color: var(--ink); }
+
+.gd-track { width: 100%; height: auto; max-width: 660px; display: block; margin: 0 auto 6px; }
+.gd-track text { font-family: var(--mono); font-size: 11px; fill: var(--ink-mute); }
+.gd-track .gd-axis { stroke: #c7c3b5; stroke-width: 1.5; }
+.gd-track .gd-tick { stroke: #c7c3b5; stroke-width: 1; }
+.gd-track .gd-target-line { stroke: var(--accent); stroke-width: 2; }
+.gd-track .gd-target-label { fill: var(--accent); font-weight: 700; }
+.gd-track .gd-err { stroke: #9a958a; stroke-width: 1; stroke-dasharray: 3 3; }
+.gd-track .gd-ghost { fill: #c7c3b5; opacity: 0.5; }
+.gd-track .gd-yhat { fill: var(--accent); }
+.gd-track .gd-yhat-label { fill: var(--ink); font-weight: 700; font-size: 12px; }
+
+.gd-forward {
+  font-family: var(--mono); font-size: 13.5px; text-align: center;
+  color: var(--ink); margin: 6px auto 14px; line-height: 1.7; max-width: 660px;
+}
+.gd-forward .gd-num { font-weight: 700; }
+.gd-forward .gd-dot { color: var(--ink-mute); margin: 0 10px; }
+
+.gd-cards { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
+.gd-card {
+  flex: 1; min-width: 250px; max-width: 360px;
+  border: 1px solid #e6e2d6; border-radius: 8px; padding: 12px 14px;
+  background: #faf8f2; font-family: var(--mono); font-size: 13px;
+}
+.gd-card-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+.gd-card-name { font-weight: 700; font-size: 16px; color: var(--accent); }
+.gd-card-transition { font-size: 15px; font-weight: 700; color: var(--ink); }
+.gd-card-row { color: var(--ink-mute); line-height: 1.75; }
+.gd-card-row.gd-next-row { color: var(--ink); }
+.gd-card-row.gd-muted { font-style: italic; }
+.gd-num { font-weight: 700; color: var(--ink); }
+.gd-pos { color: #b14a2e; font-weight: 700; }   /* positive — warm */
+.gd-neg { color: #3f7d5a; font-weight: 700; }   /* negative — green */
+.gd-nudge { background: #f0eee5; border-radius: 4px; padding: 1px 5px; }
+
+.gd-loss-wrap {
+  display: flex; align-items: center; gap: 10px; max-width: 660px;
+  margin: 16px auto 0; font-family: var(--mono); font-size: 13px;
+}
+.gd-loss-label { color: var(--ink-mute); white-space: nowrap; }
+.gd-loss-track { flex: 1; height: 14px; background: #f0eee5; border-radius: 7px; overflow: hidden; }
+.gd-loss-fill { height: 100%; background: var(--accent); border-radius: 7px; transition: width 0.3s ease; }
+.gd-loss-val { font-weight: 700; min-width: 4em; text-align: right; color: var(--ink); }
+
+.gd-controls { margin-top: 16px; }
+.gd-step { color: var(--ink-mute); font-size: 12px; margin-left: auto; font-family: var(--mono); }
+
+/* computation graph inside #viz-gd-steps */
+.gd-graph-label {
+  font-family: var(--sans); font-size: 12px; color: var(--ink-mute);
+  text-align: center; margin: 6px 0 2px;
+}
+.gd-graph-label code { font-family: var(--mono); }
+.gd-graph { width: 100%; height: auto; max-width: 680px; display: block; margin: 0 auto 6px; }
+.gd-graph .gd-node { fill: #ffffff; stroke: var(--ink); stroke-width: 1.6; }
+.gd-graph .gd-node-val { font-family: var(--mono); font-size: 12px; font-weight: 700; fill: var(--ink); }
+.gd-graph .gd-node-label { font-family: var(--mono); font-size: 10.5px; fill: var(--ink-mute); }
+.gd-graph .gd-edge { stroke: #9a958a; stroke-width: 1.4; }
+.gd-graph .gd-edge-label { font-family: var(--mono); font-size: 10px; fill: var(--ink-mute); }
+.gd-graph .gd-arrowhead { fill: #9a958a; }
