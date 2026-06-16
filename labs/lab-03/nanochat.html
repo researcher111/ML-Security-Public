@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>lab 03 — Train nanochat on Rivanna</title>
+<link rel="stylesheet" href="../_shared/lab-base.css?v=5">
+<link rel="stylesheet" href="styles.css?v=10">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-core.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-bash.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-yaml.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+</head>
+<body>
+
+<button type="button" id="present-toggle" class="present-toggle" title="Toggle presentation mode (P)">
+  <span class="present-icon">◧</span>
+  <span class="present-label">Present</span>
+</button>
+
+<aside class="toc">
+  <div class="toc-title">DS 6042</div>
+  <nav>
+    <ul>
+      <li><a href="#intro">Introduction</a></li>
+      <li><a href="#viz-try-it">Try it · the pipeline</a></li>
+      <li><a href="#where">Where to find it</a></li>
+      <li><a href="#authorized">HPC etiquette</a></li>
+      <li><a href="#scale">1 · From microGPT to nanochat</a></li>
+      <li><a href="#pipeline">2 · The training pipeline</a></li>
+      <li><a href="#rivanna">3 · The HPC environment</a></li>
+      <li><a href="#codeserver">4 · Launch Code Server</a></li>
+      <li><a href="#clone">5 · Clone &amp; configure</a></li>
+
+      <li><a href="#train">6 · Run a small training</a></li>
+      <li><a href="#chat">7 · Talk to your model</a></li>
+      <li><a href="#practices">8 · Best practices</a></li>
+      <li><a href="#antipatterns">9 · Anti-patterns</a></li>
+      <li><a href="#assignment">Assignment</a></li>
+      <li><a href="#faq">FAQ</a></li>
+    </ul>
+  </nav>
+  <div class="toc-foot">
+    <span style="color:var(--ink-mute)">Lab 03 · nanochat on Rivanna/Afton · UVA HPC</span>
+  </div>
+</aside>
+
+<main>
+
+<header class="hero" id="intro">
+  <div class="eyebrow">DS 6042 · Lab 03 · 2026</div>
+  <h1>Train your own ChatGPT</h1>
+  <p class="subtitle">microGPT was the toy. This is the real version, on the real GPUs, with your name on it.</p>
+  <p class="byline">Lab 03 walks you from a fresh Open OnDemand login to a working chat model: pretrain the base, supervised fine-tune it, optionally RL it, then talk to it through a web UI from your laptop. Same transformer you traced by hand in Lab 02 — just bigger, on UVA's Rivanna/Afton cluster.</p>
+</header>
+
+<p class="course-frame keep-in-present">
+You spent <a href="../lab-02/microgpt.html">Lab 02</a> hand-tracing a 1-layer transformer — microGPT, with a 27-token alphabet (a–z + BOS) and 4,192 parameters you could read out loud. (The hand-traced math inside the lab used a 4-token toy version of microGPT, but the real model on the page has 27.) <strong>The model you'll train in Lab 03 is the same architecture</strong> — just with depth 20 instead of 1, vocabulary 32,768 instead of 27, and a real-text training corpus. Karpathy's <code>nanochat</code> demonstrates that the gap from "toy I understand" to "chatbot that answers questions" is purely scaling. The objective today is to feel that scaling end-to-end.
+</p>
+
+<p class="lede">
+In October 2025, Andrej Karpathy released <a href="https://github.com/karpathy/nanochat"><strong><span class="gloss" data-gloss="nanochat">nanochat</span></strong></a> — a 2,000-line repository that takes you from raw text to a deployed chat model in one shell script (<code>runs/speedrun.sh</code>) for roughly <strong>$100</strong> of compute on 8&times;H100 GPUs. The four-stage pipeline — tokenizer, pretrain, supervised fine-tune, optional reinforcement learning — is everything ChatGPT does, stripped to the smallest defensible version. You'll run a scaled-down variant of it on <a href="https://www.rc.virginia.edu/userinfo/hpc/">UVA Rivanna/Afton</a> through <a href="https://ood.hpc.virginia.edu/"><span class="gloss" data-gloss="ood">Open OnDemand</span></a>, talk to the result from your laptop, and end the lab with a model nobody else has.
+</p>
+
+<div class="cite">
+  <a href="https://github.com/karpathy/nanochat">nanochat</a> · Andrej Karpathy, MIT, 2025 · concept tour: <a href="https://deepwiki.com/karpathy/nanochat">deepwiki.com/karpathy/nanochat</a> · prior lab: <a href="../lab-02/microgpt.html">Lab 02 · microGPT</a> · HPC environment: <a href="https://www.rc.virginia.edu/userinfo/hpc/">UVA Research Computing</a> · entry point: <a href="https://ood.hpc.virginia.edu/">ood.hpc.virginia.edu</a>.
+</div>
+
+<p class="glossary-hint">
+  HPC and modern-LLM vocabulary throughout: <strong>nanochat</strong>, <strong>Rivanna/Afton</strong>, <strong>SLURM</strong>, <strong>Open OnDemand</strong>, <strong>BPE</strong>, <strong>depth dial</strong>, <strong>SFT</strong>, <strong>GRPO</strong>, <strong>CORE</strong>, <strong>port forwarding</strong>. Every term <span class="gloss-demo">underlined like this</span> is hoverable: an explainer opens directly below the line you're reading, pushing the rest of the page down — nothing gets covered.
+</p>
+
+<div class="glossary-panel" id="glossary-panel" hidden aria-live="polite">
+  <button type="button" class="glossary-close" id="glossary-close" aria-label="Close explainer">×</button>
+  <div class="glossary-content" id="glossary-content"></div>
+</div>
+
+<!-- ============================================================ -->
+<!-- TRY IT — pipeline phases timeline                              -->
+<!-- ============================================================ -->
+<div class="viz" id="viz-try-it">
+  <div class="viz-title">Try it · the nanochat pipeline · click any phase</div>
+  <div class="viz-description">
+    Five phases turn a raw text corpus into a chat model. Each runs one Python script, reads the artifact from the previous phase, and writes the artifact the next phase reads. <strong>Click any phase</strong> for the script, the expected time, and what the artifact looks like.
+  </div>
+  <svg id="pipeline-svg" class="pipeline-svg" viewBox="0 0 720 240" preserveAspectRatio="xMidYMid meet" aria-label="nanochat training pipeline"></svg>
+  <div class="pipeline-detail" id="pipeline-detail">Click any phase chip above for details.</div>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="where">Where to find it</h2>
+<ul>
+  <li><strong>nanochat repo</strong> — <a href="https://github.com/karpathy/nanochat">github.com/karpathy/nanochat</a>. MIT, ~2,000 lines, single-file modules.</li>
+  <li><strong>course fork (what you'll clone)</strong> — <a href="https://github.com/researcher111/nanochat">github.com/researcher111/nanochat</a>. Upstream nanochat + a one-file patch so the web chat UI works behind UVA Open OnDemand, restyled in UVA Data Science colors.</li>
+  <li><strong>nanochat concept tour</strong> — <a href="https://deepwiki.com/karpathy/nanochat">deepwiki.com/karpathy/nanochat</a>. The architecture and pipeline explained in detail.</li>
+  <li><strong>UVA Open OnDemand</strong> — <a href="https://ood.hpc.virginia.edu">ood.hpc.virginia.edu</a>. Your entry point to Rivanna/Afton.</li>
+  <li><strong>UVA Research Computing docs</strong> — <a href="https://www.rc.virginia.edu/userinfo/hpc/">rc.virginia.edu/userinfo/hpc</a>. <span class="gloss" data-gloss="slurm">SLURM</span> queue policy, partition details, your account allocation.</li>
+  <li><strong>Lab 02 · microGPT</strong> — <a href="../lab-02/microgpt.html">microgpt.html</a>. The architecture in 2-D. Re-read the attention and MLP sections before §1 below.</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="authorized">HPC etiquette — five things, read carefully</h2>
+<p class="keep-in-present">Rivanna and Afton are <strong>shared</strong> resources used by the entire university. Your behavior affects every other researcher trying to get work done. Five rules: <strong>(1)</strong> request only what you need — if your job runs on 1 GPU, don't book 4. <strong>(2)</strong> Cancel jobs the moment you don't need them, with <code>scancel</code>. <strong>(3)</strong> Don't run interactive jobs longer than you're actively typing — switch to batch (<code>sbatch</code>) for anything left running overnight. <strong>(4)</strong> Stage data through <code>/scratch</code>, not <code>$HOME</code> — your home directory has a small quota and slow I/O. <strong>(5)</strong> Be a good steward of the university's data center — we are at a moment in history when GPU resources are scarce and every cycle you waste is one another researcher couldn't use.</p>
+
+<!-- ============================================================ -->
+<h2 id="scale">1 · From microGPT to nanochat — the same model, scaled</h2>
+
+<p>The core insight of <a href="../lab-02/microgpt.html">Lab 02</a> was that a transformer is just three things on repeat: an attention block (tokens look at other tokens), an MLP block (tokens do per-position arithmetic), and a residual stream (the running sum that carries information between blocks). microGPT stacked one of these (depth 1). nanochat stacks 20.</p>
+
+<table>
+  <thead><tr><th>Knob</th><th>microGPT (Lab 02)</th><th>nanochat default</th><th>What this changes</th></tr></thead>
+  <tbody>
+    <tr><td><strong>depth</strong> (layers)</td><td>1</td><td>20 (depth 24 ≈ GPT-2)</td><td>How many times the residual stream gets refined</td></tr>
+    <tr><td><strong>d_model</strong> (width)</td><td>16</td><td>1,280 (auto-set from depth)</td><td>How much information one residual position can carry</td></tr>
+    <tr><td><strong>vocabulary</strong></td><td>27 (a–z + BOS)</td><td>32,768 (<span class="gloss" data-gloss="bpe">BPE</span>)</td><td>What "a token" means; sub-word chunks vs. single chars</td></tr>
+    <tr><td><strong>context length</strong></td><td>16</td><td>1,024 → 4,096</td><td>How far back the model can attend</td></tr>
+    <tr><td><strong>training tokens</strong></td><td>~200 K (32K names)</td><td>~10 B</td><td>Whether the model has seen English yet</td></tr>
+    <tr><td><strong>params</strong></td><td>~4,200</td><td>~560 M (depth 20)</td><td>How much it can remember</td></tr>
+  </tbody>
+</table>
+
+<div class="viz" id="viz-residual">
+  <div class="viz-title">What a "residual position" actually is · the bridge from Lab 02</div>
+  <div class="viz-description">
+    Remember Lab 02's <a href="../lab-02/microgpt.html#blocks">neural-network diagram</a>. Every block (Embedding, Attention, MLP, …) drew a <em>column of small circles</em>, and the lab's convention said: <strong>a circle is the output of a learned-weight projection — one number, one neuron's activation</strong>. The column is the layer's output for <em>one token</em>. That column has a name: <strong>a residual position</strong>. And the length of that column — the number of circles stacked in it — has a name too: <strong><code>d_model</code></strong>.
+  </div>
+
+  <div class="rp-bridge">
+    <div class="rp-bridge-left">
+      <div class="rp-bridge-label">Lab 02 · one block, one token</div>
+      <div class="rp-bridge-svg" id="rp-bridge-svg"></div>
+      <div class="rp-bridge-caption">A single column of <strong>16 circles</strong> = a single residual position. You drew this column a dozen times in Lab 02, once per block.</div>
+    </div>
+    <div class="rp-bridge-arrow">→ widen and repeat per token →</div>
+    <div class="rp-bridge-right">
+      <div class="rp-bridge-label">Lab 03 · the same column, but for every token, at every layer</div>
+      <div class="rp-bridge-caption">microGPT keeps <strong>16 numbers per token, per layer</strong>. nanochat keeps <strong>1,280</strong>. That eighty-times-wider column is the entire reason nanochat can hold richer ideas about each word.</div>
+    </div>
+  </div>
+
+  <div class="rp-toggle">
+    <span class="rp-toggle-label">show me with:</span>
+    <button class="btn-mini" data-rp="micro">microGPT · 16 circles per column</button>
+    <button class="btn-mini" data-rp="nano">nanochat · 1,280 numbers per column</button>
+  </div>
+  <div class="rp-stage" id="rp-stage" aria-label="Residual positions illustration"></div>
+  <p class="viz-caption">
+    Every column above is a residual position — the same object you saw in Lab 02's network diagram, just plotted across a sequence of tokens. The column's <em>height</em> is <code>d_model</code>. A wider column can hold more independent facts about that token (subject vs object, plural vs singular, who "<em>it</em>" refers to, the noun's animacy, …). The table cell <em>"How much info one residual position can carry"</em> means exactly this: <strong>16 numbers per position in microGPT, 1,280 numbers per position in nanochat</strong>.
+  </p>
+</div>
+
+<p>Karpathy's design principle: a single <code><span class="gloss" data-gloss="depth">--depth</span></code> dial sets everything else. Depth 20 produces a competent small chatbot; depth 24–26 reproduces GPT-2's CORE score; depth 30+ gets you into territory that needs serious compute. You'll run depth 6 or 8 in this lab, because that fits in a single GPU and finishes during one Code Server session.</p>
+
+<div class="callout insight">
+  <span class="label">why this is interesting · the same code path</span>
+  <p>If you open <code>nanochat/gpt.py</code> alongside the architecture diagram from Lab 02, the line-by-line correspondence is one-to-one — the attention math, the MLP math, the residual addition, the layer norm. The only differences are <em>parameter counts</em> and one or two performance optimizations (<a href="https://github.com/Dao-AILab/flash-attention">Flash Attention</a> for speed, sliding-window attention for long context). <strong>Every line of nanochat is something you saw in 2-D in Lab 02.</strong></p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="pipeline">2 · The training pipeline · the five phases at a glance</h2>
+
+<p>The "try it" widget at the top of the page is the canonical reference for the five phases. Each phase is explained in detail — with its own interactive widget — <em>right next to the command that runs it</em> in §6–§7, so you can kick off a slow step and read about it while it trains. The map:</p>
+
+<ol class="pipeline-map">
+  <li><strong>Tokenize</strong> — <code>scripts/tok_train.py</code> → <code>tokenizer.pkl</code> · run it in §6.1</li>
+  <li><strong>Pretrain</strong> — <code>scripts/base_train.py</code> → <code>base_model.pt</code> · run it in §6.2</li>
+  <li><strong>SFT</strong> (supervised fine-tune) — <code>scripts/chat_sft.py</code> → <code>sft_model.pt</code> · run it in §6.3</li>
+  <li><strong>RL</strong> (optional) — <code>scripts/chat_rl.py</code> → <code>rl_model.pt</code> · §6.4</li>
+  <li><strong>Chat</strong> — <code>scripts/chat_web.py</code> → a chat URL · run it in §7</li>
+</ol>
+
+<!-- ============================================================ -->
+<h2 id="rivanna">3 · The HPC environment · Rivanna, Afton, and Open OnDemand</h2>
+
+<p>UVA Research Computing operates two clusters under one front end. <strong><span class="gloss" data-gloss="rivanna-afton">Rivanna</span></strong> is the older, broader cluster (CPUs, older GPUs, large memory nodes). <strong>Afton</strong> is the newer, GPU-heavy expansion (A100, H100, MIG-sliced nodes). For nanochat we'll use Afton's <strong>GPU-MIG</strong> partition — a sliced fraction of a GPU, which is plenty for a depth-6 model and far quicker to get than a whole card. Both share the same scheduler (<span class="gloss" data-gloss="slurm">SLURM</span>), the same storage (<code>/home</code>, <code>/scratch</code>, <code>/project</code>), and the same front door — <a href="https://ood.hpc.virginia.edu"><strong>Open OnDemand</strong></a>.</p>
+
+<p>Open OnDemand is the web portal that lets you launch interactive sessions (VS Code, JupyterLab, full Linux desktop, RStudio) directly inside a SLURM job without ever writing an <code>sbatch</code> script. For this lab we use the <strong>Code Server</strong> app — VS Code in your browser, running on a compute node with the GPU you reserved. Two benefits: (1) you get a real IDE, terminal, and file browser; (2) Code Server forwards arbitrary ports back to your laptop with one click, which is how you'll reach nanochat's chat UI in §7.</p>
+
+<!-- ============================================================ -->
+<h2 id="codeserver">4 · Launch a Code Server session <span class="time-tag">~10 min</span></h2>
+
+<h3>4.1 Log in to Open OnDemand</h3>
+<p>Open <a href="https://ood.hpc.virginia.edu">ood.hpc.virginia.edu</a> in <strong>Google Chrome</strong>. Sign in with your UVA netbadge. You land on the OOD dashboard with tiles for every available app — the dashboard groups apps by category (Desktops / GUIs / Servers), and the <strong>Code Server</strong> tile lives under <em>Servers</em>.</p>
+
+<div class="callout note">
+  <span class="label">Use Chrome</span>
+  <p><strong>Use Google Chrome for OOD and for Code Server.</strong> OOD's port-forwarding (how you'll reach nanochat's chat UI from your laptop in §7) and the in-browser VS Code session are tested primarily against Chromium-based browsers. Safari's tracking prevention and Firefox's container isolation occasionally break the WebSocket handshake Code Server needs to stay live, which produces frustrating "session lost" errors mid-training. Save yourself the debugging tax: use Chrome.</p>
+</div>
+
+<h3>4.2 Configure the Code Server job</h3>
+<p>Click <strong>Interactive Apps</strong> in the top nav — the dropdown groups apps into <em>Desktops</em>, <em>GUIs</em>, and <em>Servers</em>. Pick <strong>Code Server</strong> under <em>Servers</em>.</p>
+
+<figure class="lab-figure">
+  <img src="screenshots/01-ood-apps-menu.png" alt="OOD Interactive Apps dropdown with Code Server highlighted under the Servers section">
+  <figcaption>The <strong>Interactive Apps</strong> dropdown in the OOD top nav. Code Server lives under <em>Servers</em>, alongside JupyterLab and RStudio Server. Click it to open the job-configuration form below.</figcaption>
+</figure>
+
+<p>You'll see a form with these fields. Set them as below:</p>
+
+<table>
+  <thead><tr><th>Field</th><th>Value for this lab</th><th>Why</th></tr></thead>
+  <tbody>
+    <tr><td>Rivanna/Afton Partition</td><td><strong>GPU-MIG</strong></td><td>A MIG slice (a fraction of an A100/H100) is enough for our depth-6 run, and these are far easier to get than a whole GPU node. <strong>Pick <em>GPU-MIG</em>, not <em>GPU</em>.</strong></td></tr>
+    <tr><td>Number of hours</td><td><strong>4</strong></td><td>Depth-6 pretrain + SFT + chat; a MIG slice is slower than a full card, so give yourself the margin.</td></tr>
+    <tr><td>Number of cores</td><td><strong>2</strong></td><td>GPU-MIG allows 1–2 cores; 2 is plenty for the tokenizer and data loading.</td></tr>
+    <tr><td>Memory Request</td><td><strong>30 GB</strong></td><td>Enough for the corpus shards + tokenizer in RAM at depth 6.</td></tr>
+    <tr><td>Allocation</td><td>your class allocation</td><td>Your instructor has the allocation code; ask before class.</td></tr>
+    <tr><td>Working Directory</td><td><strong><code>/scratch/$USER</code></strong></td><td>Where Code Server opens. Must be on <code>/scratch</code> — your home quota is tiny and slow. <strong>Do not leave this on <code>HOME</code>.</strong></td></tr>
+  </tbody>
+</table>
+
+<div class="callout note">
+  <span class="label">⚠ Set Working Directory to /scratch — not home</span>
+  <p>The one field people get wrong: point <strong>Working Directory</strong> at <code>/scratch/$USER</code> (type the literal path with your own computing ID, e.g. <code>/scratch/mst3k</code>, if the form doesn't expand <code>$USER</code>). Home has a tiny quota and slow I/O — the corpus plus a single ~160 MB checkpoint will blow past it, and training will crawl or fail outright. Older screenshots may still show <code>HOME</code>; change it.</p>
+</div>
+
+<figure class="lab-figure">
+  <img src="screenshots/02-codeserver-config.png" alt="OOD Code Server configuration form: partition=GPU-MIG, hours=4, cores=2, memory=30 GB, allocation=ds6042, Work Directory=SCRATCH, ready to press Launch">
+  <figcaption>Code Server config screen with the fields above filled in — note the <strong>GPU-MIG</strong> partition. Press <strong>Launch</strong> and the form turns into a status card — your job is now in SLURM's queue waiting for a free MIG slice.</figcaption>
+</figure>
+
+<h3>4.3 Wait for the job to start, then open Code Server</h3>
+<p>After you click <strong>Launch</strong>, OOD takes you to <strong>My Interactive Sessions</strong>. Your job card will sit in <em>Queued</em> state while SLURM finds a compute node that matches your request.</p>
+
+<figure class="lab-figure">
+  <img src="screenshots/02-code-server-queued.png" alt="OOD My Interactive Sessions showing a Code Server job in Queued state with job ID, created-at timestamp, time requested, and session ID">
+  <figcaption>A freshly submitted Code Server job in <strong>Queued</strong> state. The SLURM job ID (in parentheses next to "Code Server") and the OOD session ID are both shown — useful if you need to look the job up in <code>squeue</code> from a terminal. Wait time depends on partition load and the resources you requested.</figcaption>
+</figure>
+
+<p>Queue wait depends on cluster load — typically 1–5 minutes on the GPU-MIG partition during class hours. When the card turns green and shows "Running", click <strong>Connect to Code Server</strong>. A new tab opens with a full VS Code interface running on your compute node.</p>
+
+<figure class="lab-figure">
+  <img src="screenshots/02-codeserver-running.png" alt="OOD My Interactive Sessions showing a Running Code Server card with the host name, time remaining, session ID, a Delete button, and a Connect to VS Code button">
+  <figcaption>Once SLURM finds you a node, the card goes green and shows <strong>Running</strong>, with the compute-node hostname, the time you have left, the session ID, and a blue <strong>Connect to VS Code</strong> button. Click that button to open a full VS Code interface in a new browser tab — same VS Code you use locally, just running on a Rivanna/Afton compute node with a GPU attached.</figcaption>
+</figure>
+
+<h3>4.4 Open a terminal inside Code Server</h3>
+<p>You're now in VS Code running on the compute node. Every command for the rest of the lab gets typed into a terminal inside this tab. Open one from the hamburger menu (top-left): <strong>Terminal → New Terminal</strong>. The shortcut also works: <kbd>Ctrl</kbd>+<kbd>`</kbd> (backtick) on any platform; <kbd>⇧</kbd>+<kbd>⌘</kbd>+<kbd>C</kbd> is the menu-shown chord on macOS.</p>
+
+<figure class="lab-figure">
+  <img src="screenshots/04-codeserver-new-terminal.png" alt="Code Server File menu open with Terminal selected and the Terminal submenu showing New Terminal at the top">
+  <figcaption>Open the hamburger menu (top-left, three lines), then <strong>Terminal → New Terminal</strong>. A terminal pane opens at the bottom of the window, already <code>cd</code>'d into your home directory on the compute node. Everything in §5 onward is typed here.</figcaption>
+</figure>
+
+<!-- ============================================================ -->
+<h2 id="clone">5 · Clone and configure nanochat <span class="time-tag">~15 min</span></h2>
+
+<h3>5.1 Clone into <code>/scratch</code> (not <code>$HOME</code>)</h3>
+<p>Your home directory has a small quota and slow I/O. Always stage code and data through <code>/scratch/$USER/</code>, which is fast SSD with a multi-TB quota.</p>
+
+<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">cd /scratch/$USER &amp;&amp; mkdir -p lab03 &amp;&amp; cd lab03</span>
+<span class="term-comment">$</span> <span class="term-cmd">git clone https://github.com/researcher111/nanochat.git</span>
+Cloning into 'nanochat'...
+Receiving objects: 100% (1,247/1,247), 4.8 MiB | 9.2 MiB/s, done.
+<span class="term-comment">$</span> <span class="term-cmd">cd nanochat</span></pre>
+
+<p>We clone the <strong>course fork</strong> (<a href="https://github.com/researcher111/nanochat">researcher111/nanochat</a>), not Karpathy's original. It's identical upstream nanochat except for one patch to <code>nanochat/ui.html</code>: the web chat UI now makes <em>page-relative</em> API calls so it works through UVA Open OnDemand's reverse proxy (no more "Engine not running" / 404 in §7), and it's restyled in UVA Data Science colors — Jefferson navy and Cavalier orange. The training pipeline and every script are unchanged from upstream.</p>
+
+<h3>5.2 Load the right modules and create the environment</h3>
+<p>Rivanna/Afton uses <code>module</code> for software activation. You need CUDA and a recent gcc. First check what's actually installed today — RC updates these versions periodically, so the exact build that exists this semester may differ:</p>
+
+<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">module spider gcc</span>
+<span class="term-comment"># lists every available gcc version — pick the highest 13.x if there is one, else 11.x or 12.x is fine</span>
+<span class="term-comment">$</span> <span class="term-cmd">module spider cuda</span>
+<span class="term-comment"># do the same for CUDA — pick the highest 12.x</span></pre>
+
+<p>Then load them. Substitute the exact version strings <code>module spider</code> printed:</p>
+
+<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">module load cuda/12.4 gcc/11.4.0</span>
+<span class="term-comment"># above is a current-as-of-spring-2026 default; if Lmod errors with</span>
+<span class="term-comment"># "The following module(s) are unknown", re-run module spider and</span>
+<span class="term-comment"># substitute the version it prints.</span></pre>
+
+<div class="callout note">
+  <span class="label">If you see "module unknown"</span>
+  <p><strong>Lmod errors like <code>The following module(s) are unknown: "gcc/13.3.0"</code> mean the exact version pinned here is no longer on the cluster.</strong> Run <code>module spider gcc</code> (and <code>module spider cuda</code>) to see what RC currently ships, then load whichever versions it lists. nanochat compiles cleanly under any gcc 11+ and any CUDA 12.x. The same advice applies if RC migrates to a different CUDA major version: pin to what <code>module spider</code> shows, not to a date-stamped recipe.</p>
+</div>
+
+<p>nanochat uses <code>uv</code> (Astral's fast Python package manager) for dependencies. Install it once into your user directory, then sync nanochat's deps into a project-local <code>.venv</code>. <strong>Hover any line below for a one-sentence explanation of what it does:</strong></p>
+
+<div class="annotated-term">
+  <div class="term-step" data-step-name="install uv"
+       data-explain="Downloads the uv installer from Astral and pipes it to <code>sh</code>. <code>-L</code> follows redirects, <code>-s</code> runs silently, <code>-S</code> still shows errors, <code>-f</code> exits on HTTP failure. The installer drops the <code>uv</code> binary into <code>~/.local/bin/</code>."
+  ><span class="term-prompt">$</span> <span class="term-cmd">curl -LsSf https://astral.sh/uv/install.sh | sh</span></div>
+  <div class="term-step" data-step-name="add uv to $PATH"
+       data-explain="Sources a tiny env file the installer wrote. It prepends <code>~/.local/bin</code> to your <code>$PATH</code> for this shell so the bare command <code>uv</code> resolves. Add this line to <code>~/.bashrc</code> if you want it permanent."
+  ><span class="term-prompt">$</span> <span class="term-cmd">source ~/.local/bin/env</span></div>
+  <div class="term-step" data-step-name="enter the repo"
+       data-explain="<code>uv sync</code> reads <code>pyproject.toml</code> from the current directory, so you must be inside the cloned nanochat repo. If you opened a fresh terminal since §5.1, cd back in first."
+  ><span class="term-prompt">$</span> <span class="term-cmd">cd /scratch/$USER/lab03/nanochat</span></div>
+  <div class="term-step" data-step-name="sync deps + create venv"
+       data-explain="Reads nanochat's <code>pyproject.toml</code>, resolves every dependency to an exact version, creates <code>.venv/</code> inside the nanochat dir, and installs everything into it. <code>--extra gpu</code> activates the GPU-flavored extras (CUDA-built PyTorch wheels). One command replaces the classic <code>python -m venv</code> + <code>pip install -r requirements.txt</code> dance."
+  ><span class="term-prompt">$</span> <span class="term-cmd">uv sync --extra gpu</span></div>
+  <div class="term-step" data-step-name="Python version"
+       data-explain="<strong>uv-managed Python.</strong> uv selected (or auto-downloaded) CPython 3.10.20 to match nanochat's <code>requires-python</code> pin. This is independent of system Python — no <code>module load</code> needed for it."
+  ><span class="term-output">Using CPython </span><span class="term-output-num">3.10.20</span></div>
+  <div class="term-step" data-step-name="venv created"
+       data-explain="A project-local virtual environment lives in <code>.venv/</code> inside the nanochat directory. Activating it (last line below) gives you isolated <code>python</code>, <code>pip</code>, and any console scripts the packages install."
+  ><span class="term-output">Creating virtual environment at: </span><span class="term-output-num">.venv</span></div>
+  <div class="term-step" data-step-name="dependency resolution"
+       data-explain="uv's Rust-based resolver computed which exact versions of which packages satisfy every constraint in <code>pyproject.toml</code> plus every transitive dependency. Doing this in <strong>2 ms</strong> is the headline uv feature — pip would take several seconds."
+  ><span class="term-output">Resolved </span><span class="term-output-num">130</span><span class="term-output"> packages in </span><span class="term-output-num">2ms</span></div>
+  <div class="term-step" data-step-name="wheel downloads"
+       data-explain="uv downloaded wheel archives for the 81 packages that weren't already in its global cache (the other ~50 were cached from previous installs anywhere on the cluster). The heaviest line item is usually torch (~700 MB)."
+  ><span class="term-output">Prepared </span><span class="term-output-num">81</span><span class="term-output"> packages in </span><span class="term-output-num">37.89s</span></div>
+  <div class="term-step" data-step-name="venv populated"
+       data-explain="uv linked the prepared wheels into <code>.venv/lib/python3.10/site-packages/</code>. Hardlinks where the filesystem allows, copies otherwise. Your <code>.venv</code> is now ready to use."
+  ><span class="term-hl">Installed </span><span class="term-output-num">81</span><span class="term-hl"> packages in </span><span class="term-output-num">3.47s</span></div>
+  <div class="term-step" data-step-name="activate the venv"
+       data-explain="Sources the activation script that prepends <code>.venv/bin/</code> to <code>$PATH</code> so <code>python</code>, <code>pip</code>, and project scripts now resolve to the venv. <strong>Your prompt changes to show <code>(nanochat)</code> at the front</strong>, confirming you're inside. From here on, every <code>python -m scripts.*</code> runs in this environment."
+  ><span class="term-prompt">$</span> <span class="term-cmd">source .venv/bin/activate</span></div>
+  <div class="term-explain-panel">
+    <span class="term-explain-tag">hover any line above</span>
+    <span class="term-explain-text">Each command (yellow) and each piece of output (cream/grey) has a one-sentence explanation here. Unannotated lines are routine output you can ignore.</span>
+  </div>
+</div>
+
+<figure class="lab-figure">
+  <img src="screenshots/05-uv-sync-success.png" alt="Code Server terminal showing curl uv install, source env, uv sync --extra gpu output: Using CPython 3.10.20, Creating virtual environment at .venv, Resolved 130 packages in 2ms, Prepared 81 packages in 37.89s, Installed 81 packages in 3.47s, followed by the first installed packages">
+  <figcaption>What the four commands above look like in the Code Server terminal once everything works. After <code>uv sync</code> finishes you'll see the <em>Installed N packages</em> line in green and a long bulleted list of every package and its version printed to the terminal — that's normal, scroll past it.</figcaption>
+</figure>
+
+<h3>5.3 Pick a small-but-real depth</h3>
+<p>The default <code>runs/speedrun.sh</code> assumes 8×H100 and depth 24. We're running on a single <strong>GPU-MIG slice</strong>; let's pick depth 6 (≈40M parameters). A MIG slice is only a fraction of a full GPU, so it has less VRAM and runs slower — the wall-clock estimates later in the lab assume a dedicated card, so expect your run to take longer. Override the depth on the command line:</p>
+
+<pre><code class="language-bash">export DEPTH=6
+export DEVICE_BATCH_SIZE=8         # MIG slice has limited VRAM; lower further if you OOM
+export NANOCHAT_BASE_DIR=/scratch/$USER/lab03/nanochat-data
+mkdir -p "$NANOCHAT_BASE_DIR"</code></pre>
+
+<div class="callout note">
+  <span class="label">Re-export in every new terminal</span>
+  <p>These three <code>export</code>s live only in <em>this</em> shell. If you close the terminal tab and open a new one (or your Code Server session restarts), <strong>re-run them</strong>. To make them permanent, append the three <code>export</code> lines to <code>~/.bashrc</code> — but only after your first successful end-to-end run, so you don't bake in a typo.</p>
+</div>
+
+<div class="callout note">
+  <span class="label">"Lower if you OOM" — what that means</span>
+  <p><strong>OOM = CUDA Out Of Memory.</strong> If <code>scripts.base_train</code> dies with <code>torch.cuda.OutOfMemoryError: Tried to allocate X GiB</code>, the model needed more VRAM than your GPU has. The fix is to halve <code>DEVICE_BATCH_SIZE</code> and try again: 8 → 4 → 2. nanochat uses <strong>gradient accumulation</strong>, so dropping the per-step batch doesn't hurt the effective batch size — it just runs more micro-steps to compensate. Rule of thumb: a <strong>GPU-MIG slice (~20 GB) → start at 8</strong> (drop to 4 if it still OOMs); a full A100-40 GB → 16; an H100-80 GB → 32 or 64.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="train">6 · Run a small training <span class="time-tag">~60 min</span></h2>
+
+<p>Four scripts, in sequence. Watch each one finish before starting the next.</p>
+
+<div class="callout note">
+  <span class="label">Make the wait productive</span>
+  <p>This is the long stretch of the lab — most of the ~60 minutes is the GPU training while you watch. Don't just stare at the loss: <strong>read ahead</strong> to <a href="#chat">§7 · Talk to your model</a> and <a href="#practices">§8 · Best practices</a> so you're ready the moment each checkpoint lands, play with the scaling and command widgets in §6.2, and <strong>take the Lab 03 quiz on Canvas</strong> while it all trains.</p>
+</div>
+
+<h3>6.0 Download the training corpus</h3>
+<p>nanochat trains on a slice of FineWeb-edu, downloaded as parquet shards into <code>$NANOCHAT_BASE_DIR/base_data/</code>. <strong>This step must run before §6.1</strong> — <code>tok_train.py</code> reads the shards from disk and will exit with <code>FileNotFoundError</code> if they aren't there.</p>
+
+<div class="callout note">
+  <span class="label">Download the corpus</span>
+<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">bash runs/speedrun.sh --download-only</span></pre>
+  <p>Verify the data landed:</p>
+<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">ls "$NANOCHAT_BASE_DIR/base_data" | head</span>
+shard_00000.parquet
+shard_00001.parquet
+shard_00002.parquet
+...</pre>
+  <p><code>NANOCHAT_BASE_DIR</code> is the variable nanochat actually reads — set it and <em>everything</em> lands under <code>/scratch</code>: the downloaded shards, the tokenizer, and every checkpoint (<code>base_train</code>, <code>chat_sft</code>, and <code>chat_web</code> all read and write here). If it's unset, nanochat defaults to <code>~/.cache/nanochat/</code> — the wrong place on Rivanna (home quota is tiny and slow). Run <code>echo $NANOCHAT_BASE_DIR</code> before downloading; if files ever show up under <code>~/.cache/nanochat</code>, the variable didn't carry into this shell — re-export it.</p>
+</div>
+
+<h3>6.1 Train the tokenizer</h3>
+<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">python -m scripts.tok_train --vocab-size 8192</span>
+max_chars: 2,000,000,000
+doc_cap: 10,000
+vocab_size: 8,192
+rustbpe - INFO - Processing sequences from iterator (buffer_size: 8192)
+[tok_train] Computed BPE merges: 8192 entries
+[tok_train] Saved tokenizer to data/tokenizer.pkl
+<span class="term-hl">elapsed: 8m 14s</span></pre>
+
+<p>We use vocab 8,192 instead of the default 32,768 to keep the model small.</p>
+
+<p><strong>What this phase does.</strong> BPE decides how to chop text into tokens by counting the most frequent adjacent byte pairs in the corpus and merging them, over and over, until the vocabulary is full. You can't train a model until you've decided how to tokenize — that's why this runs first. While the tokenizer trains, watch the algorithm build its first merges:</p>
+
+<div class="viz" id="viz-bpe">
+  <div class="viz-title">Try it · watch BPE learn its first merges</div>
+  <div class="viz-description">
+    A toy corpus of five words. Each <strong>Step</strong> counts every adjacent token pair across the corpus, picks the most frequent one, and replaces it everywhere with a single new token. Watch the vocabulary grow from raw characters to recognizable English chunks — <code>th</code>, <code>the</code>, <code>in</code>, <code>ing</code> — purely from frequency.
+  </div>
+
+  <div class="bpe-controls">
+    <button type="button" class="btn" id="bpe-step">Step</button>
+    <button type="button" class="btn" id="bpe-step5">Step ×5</button>
+    <button type="button" class="btn" id="bpe-reset">Reset</button>
+    <span class="bpe-counter">merges so far: <strong id="bpe-merge-count">0</strong></span>
+  </div>
+
+  <div class="bpe-grid">
+    <div class="bpe-panel">
+      <div class="bpe-panel-title">Corpus · current token sequences</div>
+      <div class="bpe-corpus" id="bpe-corpus"></div>
+    </div>
+    <div class="bpe-panel">
+      <div class="bpe-panel-title">Pair counts · next merge highlighted</div>
+      <table class="bpe-pairs-table"><tbody id="bpe-pairs-table"></tbody></table>
+    </div>
+  </div>
+
+  <div class="bpe-panel">
+    <div class="bpe-panel-title">
+      Vocabulary <span class="bpe-vocab-count" id="bpe-vocab-count">0</span>
+    </div>
+    <div class="bpe-vocab" id="bpe-vocab"></div>
+  </div>
+
+  <div class="viz-caption">
+    Scale this up: same algorithm, but on ~10 B tokens of internet English, run until the vocabulary reaches 32,768. Common English chunks (<code>the</code>, <code>ing</code>, <code>tion</code>, <code> the </code>, <code>http</code>, <code>def&nbsp;</code>) all collapse into single tokens. That is why GPT-2's vocabulary feels eerily English-shaped — it learned the chunks from frequency, not from grammar.
+  </div>
+</div>
+
+<h3>6.2 Pretrain the base model</h3>
+<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">torchrun --nproc_per_node=1 -m scripts.base_train \
+    --depth $DEPTH --device-batch-size $DEVICE_BATCH_SIZE \
+    --num-iterations 2000 2>&amp;1 | tee train.log</span>
+[base_train] Model has 42.1M parameters
+[base_train] step    0 | loss 9.21 | tokens/s   12,400
+[base_train] step  100 | loss 6.43 | tokens/s   88,200
+[base_train] step  500 | loss 4.18 | tokens/s   91,500
+[base_train] step 1000 | loss 3.61 | tokens/s   91,800
+[base_train] step 2000 | loss 2.97 | tokens/s   91,800
+[base_train] saved base_model.pt (160 MB)
+<span class="term-hl">elapsed: 13m 12s · final loss 2.97 · CORE n/a (too small)</span></pre>
+
+<figure class="lab-figure">
+  <img src="screenshots/05-training-terminal.png" alt="base_train.py live training log in the Code Server terminal: each line shows step/total, loss, learning-rate multiplier, ms/step, tokens/sec, bf16 MFU, epoch, and ETA">
+  <figcaption>What it actually looks like live. Each line is one step: <code>loss</code> falling toward ~2.9, <code>dt</code> (ms/step), <code>tok/sec</code> (~176k here), <code>bf16_mfu</code> (model-FLOPs utilization — roughly how busy the GPU is, ~13%), and <code>eta</code>. This capture is from a default <strong>5,000-step</strong> run (≈99 min total); the lab uses <code>--num-iterations 2000</code>, so your step counter stops at 2000 and your <code>eta</code> bottoms out around ~15 minutes.</figcaption>
+</figure>
+
+<div class="callout note">
+  <span class="label">While this runs · ~20 minutes</span>
+  <p>Pretraining is the longest single step — don't just watch the loss tick down. Use the time to take apart the command and the scaling widgets just below (and remember the read-ahead plan from the top of §6).</p>
+</div>
+
+<div class="viz" id="viz-cmd">
+  <div class="viz-title">Anatomy of the pretraining command</div>
+  <div class="viz-description">
+    Every piece of the command you just ran has a job. Hover, tap, or tab through each part to see what it does — and what you'd change to scale the run up or down.
+  </div>
+  <div class="cmd-line" id="cmd-line">
+    <span class="cmd-part" data-k="torchrun" tabindex="0">torchrun</span>
+    <span class="cmd-part" data-k="nproc" tabindex="0">--nproc_per_node=1</span>
+    <span class="cmd-part" data-k="module" tabindex="0">-m scripts.base_train</span>
+    <span class="cmd-part" data-k="depth" tabindex="0">--depth $DEPTH</span>
+    <span class="cmd-part" data-k="dbs" tabindex="0">--device-batch-size $DEVICE_BATCH_SIZE</span>
+    <span class="cmd-part" data-k="iters" tabindex="0">--num-iterations 2000</span>
+    <span class="cmd-part" data-k="tee" tabindex="0">2&gt;&amp;1 | tee train.log</span>
+  </div>
+  <div class="cmd-detail" id="cmd-detail">Hover, tap, or tab to a part of the command above to see what it does.</div>
+</div>
+
+<p>Loss starts around 9 (random) and falls toward 3 within 2,000 steps — the model has learned English at a basic level. Pretty good for ~15 minutes on a single GPU.</p>
+
+<p>nanochat prints the loss to the terminal but doesn't save a curve. That's why the pretrain command above ends in <code>2&gt;&amp;1 | tee train.log</code> — it saved every step line to <code>train.log</code> as it ran. Now turn that log into a plot. In Code Server make a new file <code>plot_loss.py</code> (File → New File), paste this in, and run <code>python plot_loss.py</code> — matplotlib is already in the venv:</p>
+
+<pre><code class="language-python">import re, matplotlib
+matplotlib.use("Agg")              # headless compute node — write a file, don't open a window
+import matplotlib.pyplot as plt
+
+steps, losses = [], []
+for line in open("train.log"):
+    m = re.search(r"step\s+(\d+)/\d+.*?loss:\s*([\d.]+)", line)
+    if m:
+        steps.append(int(m.group(1)))
+        losses.append(float(m.group(2)))
+
+plt.figure(figsize=(7, 4))
+plt.plot(steps, losses, lw=1)
+plt.xlabel("step"); plt.ylabel("loss")
+plt.title(f"base_train · depth 6 · {len(steps)} steps")
+plt.grid(alpha=0.3); plt.tight_layout()
+plt.savefig("loss.png", dpi=120)
+print(f"wrote loss.png ({len(steps)} points)")</code></pre>
+
+<p>Click <code>loss.png</code> in the Code Server file explorer to open it. You'll get your own version of this:</p>
+
+<figure class="lab-figure">
+  <img src="screenshots/05-training-loss.png" alt="Matplotlib loss curve generated by plot_loss.py: loss falling from ~9 to ~2.9 over 3000 steps">
+  <figcaption>The curve <code>plot_loss.py</code> produces from <code>train.log</code> (this example is a 3,000-step run; with <code>--num-iterations 2000</code> you stop a little earlier, on the same flat part). The slope flattens by ~1,500 steps — at this scale the model has learned what it's going to learn from this dataset. Going further with more compute (depth 8, 10k steps) gets a meaningfully better model; depth 24 with 25k steps is GPT-2 quality.</figcaption>
+</figure>
+
+<p><strong>What this phase does.</strong> It trains the base GPT to predict the next token on raw text — the single longest step in the pipeline (2–3 hours on 8×H100 at depth 24; ~20 minutes on a full GPU at depth 6, longer on the MIG slice we booked). What you get is a language model that completes sentences fluently but doesn't yet know what a chat is — that's the next phase's job.</p>
+
+<div class="viz" id="viz-scale">
+  <div class="viz-title">Try it · one knob, two models · microGPT → nanochat</div>
+  <div class="viz-description">
+    While pretraining grinds away, here's what the depth dial actually buys you. microGPT (Lab 02) and nanochat are the <em>same</em> transformer — attention block, MLP block, residual stream, on repeat. The only differences are how many times the block is stacked and how wide each one is. Drag <strong>depth</strong> and watch the nanochat stack grow next to the fixed microGPT reference. Here <strong>width</strong> means <code>d_model</code> — the count of numbers in each token's vector (the residual-stream width), which is also the side length of every Q, K, and V attention matrix.
+  </div>
+
+  <div class="scale-stage">
+    <div class="scale-col">
+      <div class="scale-col-head">microGPT <span class="scale-col-sub">Lab 02 · fixed</span></div>
+      <svg id="scale-micro-svg" class="scale-svg" viewBox="0 0 120 320" preserveAspectRatio="xMidYMax meet" aria-hidden="true"></svg>
+    </div>
+    <div class="scale-col">
+      <div class="scale-col-head">nanochat <span class="scale-col-sub" id="scale-nano-sub">depth 6</span></div>
+      <svg id="scale-nano-svg" class="scale-svg" viewBox="0 0 200 320" preserveAspectRatio="xMidYMax meet" aria-hidden="true"></svg>
+    </div>
+  </div>
+
+  <div class="scale-controls">
+    <label for="scale-depth">depth</label>
+    <input type="range" id="scale-depth" min="1" max="24" step="1" value="6">
+    <output id="scale-depth-out">6</output>
+    <div class="scale-presets">
+      <button type="button" class="btn-mini" data-depth="6">this lab · 6</button>
+      <button type="button" class="btn-mini" data-depth="20">default · 20</button>
+      <button type="button" class="btn-mini" data-depth="24">≈ GPT-2 · 24</button>
+    </div>
+  </div>
+
+  <div class="scale-readout" id="scale-readout"></div>
+
+  <div class="scale-attn">
+    <div class="scale-attn-head">Why width matters · inside one attention block, the Q / K / V projections</div>
+    <div class="scale-attn-row" id="scale-attn-row"></div>
+    <div class="scale-attn-note" id="scale-attn-note"></div>
+  </div>
+
+  <div class="viz-caption">
+    Depth is the <em>only</em> dial you turn. Raising it does two things at once: it stacks <strong>more layers</strong> (one per unit of depth) <em>and</em> <strong>widens every layer</strong> — nanochat sets the width to 64 × depth. Because each layer's parameter count grows with the <em>square</em> of its width, the total climbs faster than the square of depth. Going from microGPT up to this lab's depth&nbsp;6 is already a ~10,000× jump in parameters (4,200 → ~40M); the default depth&nbsp;20 is another ~14×. That super-linear curve is the whole reason bigger models cost so much more to train — and why this pretraining step is the slow one.
+  </div>
+</div>
+
+<h3>6.3 Supervised fine-tune for chat</h3>
+<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">python -m scripts.chat_sft --num-iterations 800</span>
+[chat_sft] Loaded base model: 42.1M params
+[chat_sft] step   0 | loss 4.18
+[chat_sft] step 100 | loss 2.91
+[chat_sft] step 800 | loss 2.04
+[chat_sft] saved sft_model.pt (160 MB)
+<span class="term-hl">elapsed: 14m 22s</span></pre>
+
+<p>This is the phase that makes the model <em>chat</em>. The training data shifts from raw text to dialogues formatted as <code>&lt;user&gt;... &lt;/user&gt; &lt;assistant&gt;... &lt;/assistant&gt;</code> turns. The model learns the conversational shape on top of the language it already knows.</p>
+
+<div class="callout note">
+  <span class="label">How many iterations? (and a time-saver)</span>
+  <p>SFT is short by design — it teaches the conversational <em>shape</em>, not new knowledge, so it needs far less compute than pretraining. Left to its default, <code>chat_sft</code> runs a single epoch over nanochat's small SFT mixture — about <strong>100 steps in ~2 minutes</strong>. We pass <code>--num-iterations 800</code> to make a few passes, which noticeably sharpens the chat behavior. <strong>Running low on session time? Use <code>--num-iterations 100</code></strong> — one quick epoch still gives a working chat model. Don't go overboard: past a couple of epochs you mostly <em>overfit</em> the small SFT set, and the real ceiling on chat quality at depth 6 is the base model, not how long you SFT.</p>
+</div>
+
+<p>What does an SFT training datum look like, and what does the script actually do that pretraining didn't? Two pieces — the data, and the masked loss:</p>
+
+<pre><code class="language-python"># scripts/chat_sft.py — the two pieces that matter, simplified.
+
+# (1) One SFT training datum: a chat-formatted dialogue, written
+#     as one long string with special tokens marking the turns.
+example = (
+    "&lt;|user|&gt; What is the capital of France? &lt;|end_of_turn|&gt; "
+    "&lt;|assistant|&gt; The capital of France is Paris. &lt;|end_of_turn|&gt;"
+)
+
+# (2) Tokenize the whole thing like pretraining did — one stream of
+#     token ids. Then shift by one to get input / target pairs.
+tokens     = tokenizer.encode(example)
+input_ids  = tokens[:-1]   # what the model sees
+target_ids = tokens[1:]    # what it must predict next
+
+# (3) The SFT trick: only compute the loss on ASSISTANT tokens.
+#     We do NOT want to train the model to write the user's turn —
+#     the user wrote that. We only want it to learn to predict
+#     the assistant's reply (and the end-of-turn token that stops it).
+loss_mask = is_assistant_token(target_ids)   # 1 on assistant tokens, 0 on user tokens
+logits    = model(input_ids)                 # next-token logits, same forward pass as pretrain
+losses    = cross_entropy(logits, target_ids)
+loss      = (losses * loss_mask).sum() / loss_mask.sum()   # average over assistant tokens only
+loss.backward()
+optimizer.step()</code></pre>
+
+<p>That's it — the architecture, the forward pass, and the optimizer are all the same as Phase 2. The only differences are the <em>data</em> (chat-formatted dialogues instead of raw web text) and the <em>loss mask</em> (skip the user's tokens). Fifteen minutes of this is enough to turn a "continues web text" base model into a "answers questions and stops" chat model.</p>
+
+<div class="viz" id="viz-sft">
+  <div class="viz-title">Try it · base model vs SFT model · same prompt, two completions</div>
+  <div class="viz-description">
+    Both models started from the same Phase 2 base checkpoint. The right column has 15 more minutes of training on chat-formatted dialogue. Press <strong>Play</strong> to stream the two completions token-by-token, side by side. Cycle through the examples to see the failure modes the base model exhibits and the way SFT fixes them.
+  </div>
+
+  <div class="sft-controls">
+    <button type="button" class="btn" id="sft-play">▶ Play</button>
+    <button type="button" class="btn" id="sft-reset">Reset</button>
+    <span class="sft-example-label">Example
+      <button type="button" class="sft-arrow" id="sft-prev" aria-label="previous example">‹</button>
+      <strong id="sft-example-num">1</strong> / <span id="sft-example-total">4</span>
+      <button type="button" class="sft-arrow" id="sft-next" aria-label="next example">›</button>
+    </span>
+    <span class="sft-caption-mini" id="sft-caption-mini"></span>
+  </div>
+
+  <div class="sft-prompt">
+    <div class="sft-prompt-label">Prompt</div>
+    <div class="sft-prompt-body" id="sft-prompt"></div>
+  </div>
+
+  <div class="sft-grid">
+    <div class="sft-panel">
+      <div class="sft-panel-head">
+        <span class="sft-panel-tag sft-tag-base">base model</span>
+        <span class="sft-panel-sub">predicts next token on raw text</span>
+      </div>
+      <div class="sft-stream" id="sft-stream-base"></div>
+      <div class="sft-failure" id="sft-failure-base"></div>
+    </div>
+    <div class="sft-panel">
+      <div class="sft-panel-head">
+        <span class="sft-panel-tag sft-tag-sft">SFT model</span>
+        <span class="sft-panel-sub">+15 min of chat-formatted dialogue</span>
+      </div>
+      <div class="sft-stream" id="sft-stream-sft"></div>
+      <div class="sft-failure sft-failure-good" id="sft-failure-sft"></div>
+    </div>
+  </div>
+
+  <div class="viz-caption">
+    The base model has only ever predicted the next token on raw text — when given a question, it just keeps continuing whatever pattern it sees. SFT teaches three things the base model can't learn from raw text alone: <strong>(1)</strong> recognize the user-turn special tokens as a cue to <em>answer</em>, not continue; <strong>(2)</strong> emit the <code>&lt;|end_of_turn|&gt;</code> token at a sensible stopping point; <strong>(3)</strong> adopt the helpful-assistant persona that the training dialogues all share.
+  </div>
+</div>
+
+<h3>6.4 (optional) Reinforcement learning</h3>
+<p>The timed lab stops after SFT — but if you have GPU time left, there's a fourth training phase. It uses <strong><span class="gloss" data-gloss="grpo">GRPO</span></strong> (Group Relative Policy Optimization) to push the SFT model toward preferred responses — the algorithm DeepSeek popularized, which needs no separate reward model. Output: <code>rl_model.pt</code>. Wall time: ~30 minutes at depth 6. <em>What you get:</em> noticeably better answers on reasoning tasks (GSM8K, ARC).</p>
+<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">python -m scripts.chat_rl --model data/sft_model.pt</span></pre>
+<p>Skip it if your job time is running low; the chat model from §6.3 is enough for the assignment. While it runs, here's the core idea — sample, score, reinforce:</p>
+
+<div class="viz" id="viz-grpo">
+  <div class="viz-title">Try it · one GRPO step · sample, score, reinforce</div>
+  <div class="viz-description">
+    For one prompt, sample <strong>four</strong> completions from the SFT model (the "group"). Each completion gets a <em>verifiable</em> reward — does the math check out, does the code pass tests, did it follow the format? Then the <strong>group mean</strong> becomes the baseline: completions above the mean get reinforced, below get suppressed. No separate value network. Press <strong>Re-sample</strong> to roll a fresh group; cycle examples to see different reward shapes.
+  </div>
+
+  <div class="grpo-controls">
+    <button type="button" class="btn" id="grpo-sample">↻ Re-sample group</button>
+    <span class="grpo-example-label">Example
+      <button type="button" class="sft-arrow" id="grpo-prev" aria-label="previous">‹</button>
+      <strong id="grpo-example-num">1</strong> / <span id="grpo-example-total">4</span>
+      <button type="button" class="sft-arrow" id="grpo-next" aria-label="next">›</button>
+    </span>
+    <span class="grpo-task-tag" id="grpo-task-tag"></span>
+  </div>
+
+  <div class="grpo-prompt">
+    <div class="grpo-prompt-label">Prompt · sent to the SFT model four times with different sampling temperatures</div>
+    <div class="grpo-prompt-body" id="grpo-prompt"></div>
+  </div>
+
+  <div class="grpo-grid" id="grpo-grid"></div>
+
+  <div class="grpo-summary" id="grpo-summary"></div>
+
+  <div class="viz-caption">
+    <strong>rᵢ</strong> is the reward of completion <em>i</em> — the score the verifier gives that one sampled answer (here <code>1</code> if it matches the ground truth, <code>0</code> if not). Subtracting the group mean and dividing by the group's standard deviation turns each raw reward into an <strong>advantage</strong>: positive for completions that beat their group, negative for ones that lagged. That's the signal GRPO trains on — no separate reward model, just each completion measured against its own group.
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="chat">7 · Talk to your model <span class="time-tag">~10 min</span></h2>
+
+<p>Your model is trained. There are two ways to talk to it: a <strong>terminal chat</strong> (fastest, always works) and a <strong>browser chat UI</strong> (nicer, but needs a little proxy wrangling on Rivanna). Start with the terminal.</p>
+
+<h3>7.1 Chat in the terminal</h3>
+<p>The simplest interface — no web server, no port forwarding, no proxy in the way:</p>
+<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">python -m scripts.chat_cli</span>      <span class="term-comment"># add  -i sft  if it doesn't default to your SFT model</span></pre>
+
+<p>Type a prompt and the model streams its reply right in the terminal. Try a few — at depth 6 the answers are short, sometimes incoherent, occasionally surprisingly competent. The "wow" isn't quality; it's that <em>any</em> coherent text comes back from 42M parameters you trained in under an hour.</p>
+
+<figure class="lab-figure">
+  <img src="screenshots/08-sample-conversation.png" alt="chat_cli terminal session in NanoChat Interactive Mode: asked the capital of Jamaica, the depth-6 model confidently answers with hallucinated nonsense">
+  <figcaption>The <code>chat_cli</code> terminal session. Ask it the capital of Jamaica and the depth-6 model confidently answers "a global political union…" — exactly the "early-2019 chatbot" quality you'd expect: fluent, grammatical, and wrong. That's the lesson: the gap between this and GPT-4 is roughly 10,000× more compute and 100× more parameters. Everything else is the same code path.</figcaption>
+</figure>
+
+<h3>7.2 (Optional) The browser chat UI</h3>
+<p>nanochat also ships a ChatGPT-style web UI (FastAPI + Uvicorn) on port 8000. The Code Server trick is that you can <strong><span class="gloss" data-gloss="port-forwarding">port-forward</span></strong> that 8000 back to your laptop's browser. Launch the server:</p>
+<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">python -m scripts.chat_web --port 8000</span>
+Starting NanoChat Web Server
+Loading nanochat models across GPUs...
+<span class="term-hl">INFO:     Uvicorn running on http://0.0.0.0:8000</span></pre>
+
+<p><strong>No model path needed.</strong> <code>chat_web</code> auto-loads your latest SFT checkpoint from <code>chatsft_checkpoints/</code>. Do <em>not</em> pass <code>--model …</code>: argparse prefix-matches it to <code>--model-tag</code>, so this version treats the path as a checkpoint <em>tag</em> and dies with <code>No checkpoints found</code>.</p>
+
+<p>Then forward the port: Code Server runs inside Open OnDemand, which auto-forwards the ports your server opens. Open the <strong>Ports</strong> tab in the bottom panel and find the row for port <strong>8000</strong> (if it's not there, click <strong>Forward a Port</strong> and enter <code>8000</code>). Its <strong>Forwarded Address</strong> is an <code>ood.hpc.virginia.edu/rnode/…</code> URL; <kbd>Cmd</kbd>/<kbd>Ctrl</kbd>-click it (or the globe icon) to open the chat UI in your browser.</p>
+
+<figure class="lab-figure">
+  <img src="screenshots/06-port-forward.png" alt="VS Code Ports panel inside Code Server: port 8000 forwarded to an ood.hpc.virginia.edu/rnode URL, with the running python -m scripts.chat_web --port 8000 process listed">
+  <figcaption>The Ports tab inside Code Server. Port <strong>8000</strong> is forwarded to an <code>ood.hpc.virginia.edu/rnode/…</code> address — the <em>Running Process</em> column shows <code>python -m scripts.chat_web --port 8000</code> behind it. <kbd>Cmd</kbd>/<kbd>Ctrl</kbd>-click that address (or the globe icon) to open your model's chat UI in a new browser tab.</figcaption>
+</figure>
+
+<figure class="lab-figure">
+  <img src="screenshots/07-chat-ui.png" alt="nanochat web UI with a UVA-navy header, showing a question about the capital of Egypt and the depth-6 model degenerating into repeated text">
+  <figcaption>The nanochat web UI in your browser — the UVA-navy "nanochat — trained by you" header is the course fork, and the chat works through the OOD proxy thanks to its relative-path patch. Ask the capital of Egypt and the depth-6 model degenerates into repetition (<em>"Apis Apis Apis…"</em>): fluent for a few words, then it loses the thread. That's depth-6 quality — the pipeline is the production one, the model is just tiny.</figcaption>
+</figure>
+
+<div class="callout note">
+  <span class="label">Why the browser UI works here (and didn't in upstream nanochat)</span>
+  <p>The course fork already fixes this, so you shouldn't hit it — but it's worth knowing. Upstream <code>nanochat/ui.html</code> sets <code>const API_URL = ''</code>, so its fetches to <code>/chat/completions</code> and <code>/health</code> are rooted at the domain. Behind OOD the page lives at <code>ood.hpc.virginia.edu/rnode/…/8000/</code>, so those absolute paths skip the <code>rnode/…/8000/</code> prefix and 404 — and the UI reports "Engine not running" (the engine is actually fine; it runs inside <code>chat_web</code>). The fork sets <code class="language-javascript">const API_URL = window.location.pathname.replace(/\/$/, '')</code> so the calls inherit the proxy prefix. If you ever run <em>upstream</em> nanochat behind a proxy and see the 404, that one-line change is the fix — or just use the terminal chat in §7.1.</p>
+</div>
+
+<div class="callout insight">
+  <span class="label">what just happened</span>
+  <p>You took raw English text → trained a tokenizer on it → trained a small transformer on it from scratch → continued training on dialogue formats → served it behind a chat UI → talked to it from your laptop. <strong>You built an LLM</strong>. The fact that it's a small one is incidental; the pipeline is the production one. Every commercial chatbot you've ever used was made this way, just bigger and longer.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="practices">8 · Best practices · for nanochat and for HPC</h2>
+
+<div class="practice"><span class="practice-num">1</span><div><strong>Always work in <code>/scratch</code>.</strong> Faster I/O, larger quota. <code>$HOME</code> is for dotfiles and small scripts; <code>/scratch</code> is for datasets, checkpoints, virtualenvs.</div></div>
+
+<div class="practice"><span class="practice-num">2</span><div><strong>Save checkpoints aggressively during training.</strong> A SLURM job killed by the wall-clock limit (or by you Ctrl-C-ing accidentally) loses everything in memory. nanochat checkpoints every 1,000 steps by default; don't change that unless you have a reason.</div></div>
+
+<div class="practice"><span class="practice-num">3</span><div><strong>Watch GPU utilization with <code>nvidia-smi</code>.</strong> If you see GPU at 50% during training, your data loader is the bottleneck — bump the worker count or move data closer to <code>/scratch</code>. A GPU sitting idle is a research-allocation waste.</div></div>
+
+<div class="practice"><span class="practice-num">4</span><div><strong>Use <code>tmux</code> or <code>screen</code> for long-running terminals.</strong> Code Server's browser tab can disconnect; without a multiplexer, your training run dies with the tab. <code>tmux new -s train; python -m scripts.base_train ...; (detach Ctrl-b d)</code>.</div></div>
+
+<div class="practice"><span class="practice-num">5</span><div><strong>For runs over a few hours, switch to <code>sbatch</code>.</strong> Interactive Code Server sessions are great for development and short training. Real overnight training goes in a batch script. The repo has examples in <code>runs/speedrun.sh</code>.</div></div>
+
+<div class="practice"><span class="practice-num">6</span><div><strong>Read your own loss curves.</strong> If loss isn't decreasing, the model is broken — usually a tokenizer mismatch or a forgotten <code>--depth</code>. If loss decreases too fast (loss &lt; 1 in 100 steps), you're overfitting on a tiny dataset.</div></div>
+
+<div class="practice"><span class="practice-num">7</span><div><strong>Run <code>scancel</code> the moment you're done.</strong> Don't wait for the time-limit to expire. Your job is holding a GPU someone else could be using.</div></div>
+
+<div class="practice"><span class="practice-num">8</span><div><strong>Document your experiment.</strong> A loss curve PNG, the exact command line, the final eval score — all checked into your repo or pinned in a note. Six months from now you will not remember why you used vocab 8,192.</div></div>
+
+<!-- ============================================================ -->
+<h2 id="antipatterns">9 · Anti-patterns</h2>
+
+<div class="callout note">
+  <span class="label">things that look like training but aren't</span>
+  <ul>
+    <li><strong>Running pretraining on a CPU.</strong> Possible — <code>runs/runcpu.sh</code> exists — but absurdly slow. Use it once to feel the difference, then go back to the GPU.</li>
+    <li><strong>Holding a GPU job idle.</strong> "I'll come back to it after lunch" + a 4-hour job + you forgetting = wasted allocation. Use <code>scancel</code> the moment you're done.</li>
+    <li><strong>Skipping <span class="gloss" data-gloss="sft">SFT</span> and chatting with the base model.</strong> The base model completes text; it doesn't chat. You'll get rambling completions, not answers. Always run <code>chat_sft.py</code> before <code>chat_web.py</code>.</li>
+    <li><strong>Training with <code>--depth 24</code> on a single MIG slice.</strong> Yes, it works. No, it doesn't finish in your 4-hour window. Match depth to the resources you booked.</li>
+    <li><strong>Treating CORE / loss as the only quality signal.</strong> <span class="gloss" data-gloss="core-metric">CORE</span> is a single number; talking to the model for ten minutes tells you things CORE cannot. <em>Always</em> end with a hands-on chat session.</li>
+  </ul>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="assignment">Assignment · train and ship your own chat model</h2>
+
+<p>Train a chat model end-to-end on Rivanna/Afton, evaluate it, and write up what you learned. The deliverable is a small repo + a short report + your model's chat transcript.</p>
+
+<h3>What you train</h3>
+<ol>
+  <li>Pick a depth between 4 and 10. Depth 4 finishes faster; depth 10 produces noticeably better answers; depth 6–8 is the sweet spot for one 4-hour Code Server session.</li>
+  <li>Run the full pipeline: tokenizer → pretrain → SFT → (optional RL) → chat. Use the commands in §6, adjusted for your depth.</li>
+  <li>Save the loss curve from each stage, the model checkpoints, and the final eval metrics.</li>
+</ol>
+
+<h3>What you submit</h3>
+<ol>
+  <li><strong>GitHub repo</strong> containing: your <code>train.sh</code> (the exact commands you ran), the loss curves as PNGs, a small CSV with metrics-per-checkpoint, a <code>README.md</code> explaining what you did and what depth you chose and why.</li>
+  <li><strong>Chat transcript</strong> — a Markdown file with 10–15 prompts and the model's responses. Include both the proud moments and the embarrassing failures. Pick prompts that probe specific capabilities: factual recall, simple math, basic reasoning, instruction-following, creative writing.</li>
+  <li><strong>1-page reflection</strong> — what surprised you (good), what surprised you (bad), and one specific change you would make if you had another 4-hour block.</li>
+  <li><strong>(Optional bonus, +10 pts)</strong> — run an evaluation script (any of the tasks in <code>tasks/</code> — GSM8K, ARC, MMLU) on your model and on a baseline. Report the comparison.</li>
+</ol>
+
+<h3>Rubric</h3>
+<table>
+  <thead><tr><th>criterion</th><th style="text-align:right;">points</th></tr></thead>
+  <tbody>
+    <tr><td>End-to-end pipeline ran; tokenizer + base + SFT all saved</td><td style="text-align:right;">25</td></tr>
+    <tr><td>Loss curves attached; loss actually decreases (model trained, not broken)</td><td style="text-align:right;">15</td></tr>
+    <tr><td>Chat transcript is honest — includes both successes and failures</td><td style="text-align:right;">20</td></tr>
+    <tr><td>Reflection names a specific surprise, good or bad, with a hypothesis for why</td><td style="text-align:right;">15</td></tr>
+    <tr><td>Repo is reproducible — a classmate could re-run your <code>train.sh</code> on the same allocation and get a similar result</td><td style="text-align:right;">15</td></tr>
+    <tr><td>HPC etiquette respected — <code>scancel</code> ran, <code>/scratch</code> used, allocation not wasted</td><td style="text-align:right;">10</td></tr>
+    <tr><td><strong>Total</strong></td><td style="text-align:right;"><strong>100</strong></td></tr>
+    <tr><td><em>Bonus · eval script run against a baseline</em></td><td style="text-align:right;"><em>+10</em></td></tr>
+  </tbody>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="faq">FAQ</h2>
+
+<h3>Why train at all? Why not just use Claude / GPT?</h3>
+<p>Because what you do for a living involves applying ML to security data, and "use an API" is one tool of many. Knowing what's inside that API — having trained the same shape of thing yourself — changes how you reason about its failures, costs, and supply-chain risk. Lab 03 is the practical version of the conceptual story you walked through in Lab 02.</p>
+
+<h3>What if my Code Server session disconnects mid-training?</h3>
+<p>If you used <code>tmux</code> (Best Practice #4) your training keeps running on the compute node; just re-connect to OOD, re-open Code Server, attach the existing tmux session. If you didn't use tmux, the training died. Re-launch — checkpoints from before the disconnect are still saved.</p>
+
+<h3>The model says weird things. Is that normal?</h3>
+<p>At depth 6 with one hour of pretrain, yes. The model has 42M parameters and has seen a tiny fraction of the corpus a real model trains on. Coherent-sounding sentences with factual errors is the baseline. Sentence fragments, repeated tokens, and confident nonsense are also normal. Lab 12 (the LLM-security module) explores why even <em>large</em> models exhibit these failure modes and how to detect them.</p>
+
+<h3>How do I get a bigger allocation?</h3>
+<p>Your class allocation is set by the instructor; ask if you need more. UVA Research Computing also has a research-allocation request process — useful for projects beyond the course. Submit a paragraph describing your project at <a href="https://www.rc.virginia.edu/userinfo/hpc/queues-allocations/">rc.virginia.edu</a>.</p>
+
+<h3>Can I do this from my laptop with a local GPU?</h3>
+<p>If your laptop has an NVIDIA GPU with ≥16GB VRAM (RTX 4080+, M-series with Metal Performance Shaders, AMD with ROCm), yes — same commands, no SLURM. Performance is comparable to one A100 for depth 6. The HPC etiquette section doesn't apply; everything else does.</p>
+
+<h3>I'm getting OOM on the GPU. What do I lower?</h3>
+<p>In order: <code>--device-batch-size</code> (halve it), then <code>--seq-len</code> (cut to 512), then <code>--depth</code> (down to 4). The repo has a <code>--gradient-accumulation</code> flag that trades wall-clock for memory — set it to 4 and you can usually fit a depth-8 model on an A100.</p>
+
+<h3>Where does Lab 03 connect to the rest of the course?</h3>
+<p>This is the "build" foundation for everything LLM-shaped in the course. Lab 04 (microagent) builds a tiny agent on top of a model like this one. Lab 05 (attacking AI agents) targets exactly that agent. Lab 06 (microMCP) builds the tool-protocol layer underneath; Lab 07 (attacking MCP) attacks that protocol. Lab 11 (unaligned models) starts from a model like the one you trained here. Labs 12–13 (deployment) put a chat-model-shaped object behind a hardened service. Lab 10 (agentic pentest) uses an externally-hosted model but the architecture is what you just built.</p>
+
+<footer>
+DS 6042 — Lab 03 · nanochat on Rivanna/Afton. Lab style codified in <code>CLAUDE.md</code>. nanochat © Andrej Karpathy, MIT 2025.
+</footer>
+
+</main>
+
+<script src="../_shared/lab-base.js?v=6"></script>
+<script src="viz.js?v=13"></script>
+</body>
+</html>
