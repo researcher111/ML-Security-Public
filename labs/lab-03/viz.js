@@ -874,147 +874,269 @@
   })();
 
   /* ============================================================
-   *  #viz-residual — what a residual position is, made visible
-   *
-   *  Renders a sequence of tokens. Above each token sits a column
-   *  representing that token's residual position vector. The column's
-   *  cell count = d_model. Two visual modes:
-   *   · micro: 16 circles per column, matching Lab 02's node-circle
-   *            convention. The reader recognizes the shape.
-   *   · nano:  1,280 numbers per column — too many for circles, so
-   *            we draw a stripe of compact rows with a labeled gap.
-   *
-   *  Also renders the rp-bridge-svg in the top-left of the widget —
-   *  one isolated 16-circle column with a "Lab 02 · one block, one
-   *  token" caption, so the connection is impossible to miss.
+   *  #viz-residual — what a residual position is, made visible,
+   *  via the "scorecard for every word" analogy. Three panels:
+   *   1. One word's scorecard — 16 labeled, hoverable blanks.
+   *   2. Width explorer — drag d_model 16 → 1,280, watch it morph.
+   *   3. Sequence stage — one card per word, micro vs nano toggle.
    * ============================================================ */
   (function initResidual() {
     const root = document.getElementById('viz-residual');
     if (!root) return;
-    const stage  = document.getElementById('rp-stage');
-    const bridge = document.getElementById('rp-bridge-svg');
+    const stage = document.getElementById('rp-stage');
     if (!stage) return;
 
-    const TOKENS = ['the', 'cat', 'sat', 'on', 'the', 'mat'];
+    /* ---------- the 16 labeled qualities ---------- */
+    const LABELS = [
+      { key: 'animal',   name: 'animal-ness',   hi: 'an animal',          lo: 'not an animal' },
+      { key: 'plural',   name: 'plural?',       hi: 'many',               lo: 'just one' },
+      { key: 'texture',  name: 'texture',       hi: 'soft / furry',       lo: 'hard / smooth' },
+      { key: 'role',     name: 'sentence role', hi: 'the subject (doer)', lo: 'an object (acted on)' },
+      { key: 'concrete', name: 'concreteness',  hi: 'a physical thing',   lo: 'an abstract idea' },
+      { key: 'tense',    name: 'tense',         hi: 'past',               lo: 'present / none' },
+      { key: 'tone',     name: 'tone',          hi: 'positive',           lo: 'negative' },
+      { key: 'size',     name: 'size',          hi: 'big',                lo: 'small' },
+      { key: 'name',     name: 'is-a-name?',    hi: 'a proper name',      lo: 'a common word' },
+      { key: 'living',   name: 'living?',       hi: 'alive',              lo: 'inanimate' },
+      { key: 'refers',   name: 'refers back?',  hi: 'points to an earlier word', lo: 'stands on its own' },
+      { key: 'phrase',   name: 'phrase-start?', hi: 'begins a phrase',    lo: 'sits mid-phrase' },
+      { key: 'food',     name: 'food-related',  hi: 'about food',         lo: 'nothing to do with food' },
+      { key: 'freq',     name: 'frequency',     hi: 'a common word',      lo: 'a rare word' },
+      { key: 'register', name: 'register',      hi: 'formal',             lo: 'casual' },
+      { key: 'verb',     name: 'action / verb', hi: 'an action (verb)',   lo: 'a thing (noun)' },
+    ];
 
-    // Color palette · consistent with Lab 02 (orange = positive,
-    // green = negative, cream = near-zero).
-    function paletteFor(tokenIdx, cellIdx) {
-      const k = (tokenIdx * 1103515245 + cellIdx * 12345 + 91) & 0x7fffffff;
-      const v = (k % 100) / 100;   // pseudo-value in [0,1]
-      const sign = ((k >> 7) & 1) ? 1 : -1;
-      if (Math.abs(v - 0.5) < 0.08) return { fill: '#f0eee5', stroke: '#cfcbbe' };  // near-zero · gray
-      if (sign > 0) {
-        // Positive · orange ramp
-        const r = Math.round(253 - v * 30);
-        const g = Math.round(224 - v * 90);
-        const b = Math.round(210 - v * 80);
-        return { fill: `rgb(${r},${g},${b})`, stroke: '#b14a2e' };
-      }
-      // Negative · green ramp
-      const r = Math.round(213 - v * 40);
-      const g = Math.round(230 - v * 30);
-      const b = Math.round(220 - v * 30);
-      return { fill: `rgb(${r},${g},${b})`, stroke: '#588b6e' };
-    }
+    const WORDS = ['cat', 'dogs', 'ran', 'Paris', 'it', 'happily'];
 
-    /* ---------- Bridge column ("Lab 02 · one block, one token") ---------- */
-    function renderBridge() {
-      if (!bridge) return;
-      const cellR = 9;
-      const gap = 3;
-      const cells = 16;
-      const cy0 = 8;
-      const svgH = cy0 + cells * (cellR * 2 + gap) + 30;
-      const svgW = 80;
-      const circles = [];
-      for (let i = 0; i < cells; i++) {
-        const cy = cy0 + cellR + i * (cellR * 2 + gap);
-        const p = paletteFor(0, i);
-        circles.push(`<circle cx="${svgW / 2}" cy="${cy}" r="${cellR}"
-                              fill="${p.fill}" stroke="${p.stroke}" stroke-width="1.4"/>`);
-      }
-      // Label the token at the bottom.
-      circles.push(`<text x="${svgW / 2}" y="${cy0 + cells * (cellR * 2 + gap) + 20}"
-                          text-anchor="middle"
-                          style="font-family: var(--serif); font-size: 14px; font-weight: 600; fill: var(--ink);">cat</text>`);
-      bridge.innerHTML = `
-        <svg viewBox="0 0 ${svgW} ${svgH}" width="${svgW}" height="${svgH}" aria-label="one residual position">
-          ${circles.join('')}
-        </svg>`;
-    }
-    renderBridge();
-
-    /* ---------- Main stage: sequence of token columns ---------- */
-    const MODES = {
-      micro: {
-        dModel: 16,
-        rendered: 'circles',
-        cellR: 9, cellGap: 3,
-        colWidth: 28,
-        label: '16 circles per column · matches Lab 02',
-        note: 'You could (and did, in Lab 02) read these 16 numbers out loud. Six tokens × 16 numbers = the residual stream state at this layer.',
-      },
-      nano: {
-        dModel: 1280,
-        rendered: 'stripe',
-        cellsToDraw: 24,            // 12 top + 12 bottom, ellipsis between
-        cellH: 6, cellGap: 1,
-        colWidth: 28,
-        label: '1,280 numbers per column',
-        note: 'Eighty times wider than microGPT — eighty times more independent ideas the model can encode about this token at this layer.',
-      },
+    // A few hand-set scores so obvious qualities light up sensibly.
+    const OVERRIDES = {
+      cat:     { animal: 0.92, living: 0.9,  plural: -0.85, name: -0.8, verb: -0.85, concrete: 0.8 },
+      dogs:    { animal: 0.88, living: 0.88, plural: 0.92,  name: -0.8, verb: -0.8,  concrete: 0.8 },
+      ran:     { verb: 0.95,  tense: 0.9,   animal: -0.6,  living: -0.5, plural: -0.4, concrete: -0.6 },
+      Paris:   { name: 0.95,  concrete: 0.6, animal: -0.7,  living: -0.6, plural: -0.6, verb: -0.8 },
+      it:      { refers: 0.92, animal: -0.1, name: -0.7,    concrete: -0.3, plural: -0.3, verb: -0.7 },
+      happily: { verb: -0.6,  tense: -0.4,  animal: -0.7,  concrete: -0.7, tone: 0.5,   register: -0.3 },
     };
 
+    function hashStr(s) {
+      let h = 2166136261;
+      for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+      return h >>> 0;
+    }
+    // Signed score in roughly [-1, 1] for (word, blank index).
+    function scoreFor(word, i) {
+      const o = OVERRIDES[word];
+      if (o && LABELS[i] && o[LABELS[i].key] != null) return o[LABELS[i].key];
+      const h = (hashStr(word) ^ Math.imul(i + 1, 2654435761)) >>> 0;
+      return Math.round((((h % 2000) / 1000) - 1) * 100) / 100;
+    }
+
+    // Color: orange = positive, green = negative, cream = near-zero.
+    function colorFor(v) {
+      const a = Math.abs(v);
+      if (a < 0.12) return { fill: '#f0eee5', stroke: '#cfcbbe' };
+      if (v > 0) {
+        return { fill: `rgb(${Math.round(253 - a * 30)},${Math.round(224 - a * 90)},${Math.round(210 - a * 80)})`, stroke: '#b14a2e' };
+      }
+      return { fill: `rgb(${Math.round(213 - a * 40)},${Math.round(230 - a * 30)},${Math.round(220 - a * 30)})`, stroke: '#588b6e' };
+    }
+    function fmtVal(v) { return (v >= 0 ? '+' : '') + v.toFixed(2); }
+
+    /* ============================================================
+     *  PANEL 1 · one word's scorecard
+     * ============================================================ */
+    const wordsEl   = document.getElementById('sc-words');
+    const cardEl    = document.getElementById('sc-card');
+    const readoutEl = document.getElementById('sc-readout');
+    let activeWord = 'cat';
+
+    function defaultReadout() {
+      readoutEl.innerHTML = `
+        <div class="sc-readout-tag">the card</div>
+        <div class="sc-readout-text">Each row is one blank on <strong>${activeWord}</strong>'s card — one number microGPT stores for this word. <strong>Hover or tap a row</strong> to read what it measures. Pick another word above to watch all 16 blanks get re-scored.</div>`;
+    }
+
+    function showRow(i) {
+      const L = LABELS[i];
+      const v = scoreFor(activeWord, i);
+      let lean;
+      if (v > 0.12)       lean = `Leans toward <strong>${L.hi}</strong>.`;
+      else if (v < -0.12) lean = `Leans toward <strong>${L.lo}</strong>.`;
+      else                lean = `Sits in the middle — <strong>${L.hi}</strong> vs <strong>${L.lo}</strong> is roughly a toss-up.`;
+      readoutEl.innerHTML = `
+        <div class="sc-readout-tag">blank ${i + 1} · ${L.name}</div>
+        <div class="sc-readout-text"><strong>${activeWord}</strong> scores <strong>${fmtVal(v)}</strong> here. ${lean}</div>`;
+    }
+
+    function renderCard() {
+      cardEl.innerHTML = LABELS.map((L, i) => {
+        const v = scoreFor(activeWord, i);
+        const c = colorFor(v);
+        const half = Math.min(Math.abs(v), 1) * 50;
+        const fill = v >= 0
+          ? `left:50%;width:${half}%;background:#b14a2e;`
+          : `right:50%;width:${half}%;background:#588b6e;`;
+        return `
+          <div class="sc-row" data-i="${i}" tabindex="0">
+            <span class="sc-row-i">${i + 1}</span>
+            <span class="sc-dot" style="background:${c.fill};border-color:${c.stroke}"></span>
+            <span class="sc-row-name">${L.name}</span>
+            <span class="sc-bar"><span class="sc-bar-mid"></span><span class="sc-bar-fill" style="${fill}"></span></span>
+            <span class="sc-row-val">${fmtVal(v)}</span>
+          </div>`;
+      }).join('');
+      cardEl.querySelectorAll('.sc-row').forEach(row => {
+        const i = +row.dataset.i;
+        const on  = () => { cardEl.querySelectorAll('.sc-row').forEach(r => r.classList.remove('active')); row.classList.add('active'); showRow(i); };
+        const off = () => { row.classList.remove('active'); defaultReadout(); };
+        row.addEventListener('mouseenter', on);
+        row.addEventListener('mouseleave', off);
+        row.addEventListener('focus', on);
+        row.addEventListener('blur', off);
+      });
+    }
+
+    function renderWordChips() {
+      wordsEl.innerHTML = WORDS.map(w =>
+        `<button class="sc-chip${w === activeWord ? ' active' : ''}" data-w="${w}">${w}</button>`).join('');
+      wordsEl.querySelectorAll('.sc-chip').forEach(btn => {
+        btn.addEventListener('click', () => {
+          activeWord = btn.dataset.w;
+          renderWordChips();
+          renderCard();
+          defaultReadout();
+        });
+      });
+    }
+
+    if (wordsEl && cardEl && readoutEl) {
+      renderWordChips();
+      renderCard();
+      defaultReadout();
+    }
+
+    /* ============================================================
+     *  PANEL 2 · width explorer (d_model 16 -> 1,280)
+     * ============================================================ */
+    const wSlider  = document.getElementById('sc-width-slider');
+    const wCol     = document.getElementById('sc-width-col');
+    const wReadout = document.getElementById('sc-width-readout');
+    const wPool    = document.getElementById('sc-width-pool');
+
+    const POOL = [
+      'animal-ness', 'plural?', 'furry?', 'subject?', 'past-tense?', 'positive tone',
+      'big / small', 'is-a-name?', 'alive?', 'refers-to-what?', 'phrase-start?',
+      'food-related?', 'common word?', 'formal?', 'is-a-verb?', 'sarcasm?',
+      'inside-a-quote?', 'rhymes-with?', 'question-word?', 'negation?', 'color word?',
+      'number word?', 'time word?', 'place word?', 'emotion?', 'politeness?',
+      'technical jargon?', 'slang?', 'first-person?', 'verb agreement?', 'possessive?',
+      'comparative?', 'superlative?', 'metaphor?', 'idiom-part?', 'topic: science?',
+      'topic: sports?', 'topic: law?', 'who is speaking?', 'sentence-start?',
+    ];
+    const LOG80 = Math.log(80);
+    const dFromSlider = () => Math.round(16 * Math.exp((+wSlider.value / 1000) * LOG80));
+    const sliderFromD = d => Math.round(1000 * Math.log(d / 16) / LOG80);
+
+    function renderWidth(d) {
+      const H = 250, W = 48;
+      const drawn = Math.min(d, 130);
+      const ch = H / drawn;
+      let cells = '';
+      for (let i = 0; i < drawn; i++) {
+        const col = colorFor(scoreFor('cat', i));
+        cells += `<div class="sc-wc-cell" style="height:${ch}px;background:${col.fill};border-color:${col.stroke}"></div>`;
+      }
+      wCol.style.width = W + 'px';
+      wCol.style.height = H + 'px';
+      wCol.innerHTML = cells;
+
+      const name = d <= 16 ? 'microGPT' : (d >= 1280 ? 'nanochat' : 'between the two');
+      const ratio = d / 16;
+      const cmp = d <= 16
+        ? 'the baseline card'
+        : `${ratio >= 10 ? Math.round(ratio) : ratio.toFixed(1)}x longer than microGPT's card`;
+      wReadout.innerHTML = `
+        <div class="sc-width-num">${d.toLocaleString()}</div>
+        <div class="sc-width-unit">blanks per word</div>
+        <div class="sc-width-name">${name}</div>
+        <div class="sc-width-cmp">${cmp}</div>`;
+
+      const shown = Math.min(d, POOL.length);
+      const chips = POOL.slice(0, shown).map(q => `<span class="sc-pool-chip">${q}</span>`).join('');
+      const more = d > POOL.length
+        ? `<span class="sc-pool-more">+ ${(d - POOL.length).toLocaleString()} more the model fills in (no room to draw)</span>`
+        : '';
+      wPool.innerHTML = chips + more;
+    }
+
+    if (wSlider && wCol && wReadout && wPool) {
+      wSlider.addEventListener('input', () => renderWidth(dFromSlider()));
+      root.querySelectorAll('.sc-width-presets [data-w]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const d = +btn.dataset.w;
+          wSlider.value = String(sliderFromD(d));
+          renderWidth(d);
+        });
+      });
+      renderWidth(16);
+    }
+
+    /* ============================================================
+     *  PANEL 3 · one card per word, across the sentence
+     * ============================================================ */
+    const TOKENS = ['the', 'cat', 'sat', 'on', 'the', 'mat'];
+    const MODES = {
+      micro: {
+        dModel: 16, cellR: 9, cellGap: 3, colWidth: 28,
+        label: '16-blank cards · matches Lab 02',
+        note: 'You could read all 16 numbers out loud. Six words x 16 blanks = the residual stream at this layer.',
+      },
+      nano: {
+        dModel: 1280, cellsToDraw: 24, cellH: 6, cellGap: 1, colWidth: 28,
+        label: '1,280-blank cards',
+        note: 'Eighty times longer than microGPT — eighty times more independent ideas the model can record about each word.',
+      },
+    };
     let mode = 'micro';
 
     function renderCirclesCol(tokenIdx) {
       const m = MODES.micro;
       const svgH = 8 + m.dModel * (m.cellR * 2 + m.cellGap);
-      const out = [];
+      let out = '';
       for (let i = 0; i < m.dModel; i++) {
         const cy = 8 + m.cellR + i * (m.cellR * 2 + m.cellGap);
-        const p = paletteFor(tokenIdx, i);
-        out.push(`<circle cx="${m.colWidth / 2}" cy="${cy}" r="${m.cellR}"
-                          fill="${p.fill}" stroke="${p.stroke}" stroke-width="1.4"/>`);
+        const c = colorFor(scoreFor(TOKENS[tokenIdx], i));
+        out += `<circle cx="${m.colWidth / 2}" cy="${cy}" r="${m.cellR}" fill="${c.fill}" stroke="${c.stroke}" stroke-width="1.4"/>`;
       }
-      return { svg: `<svg viewBox="0 0 ${m.colWidth} ${svgH}" width="${m.colWidth}" height="${svgH}">${out.join('')}</svg>`, h: svgH };
+      return `<svg viewBox="0 0 ${m.colWidth} ${svgH}" width="${m.colWidth}" height="${svgH}">${out}</svg>`;
     }
 
     function renderStripeCol(tokenIdx) {
       const m = MODES.nano;
-      const cells = [];
-      const halfRows = m.cellsToDraw / 2;
-      for (let i = 0; i < halfRows; i++) {
-        const p = paletteFor(tokenIdx, i);
-        cells.push(`<div class="rp-cell" style="width:${m.colWidth}px;height:${m.cellH}px;background:${p.fill};border-color:${p.stroke}"></div>`);
+      const half = m.cellsToDraw / 2;
+      let cells = '';
+      for (let i = 0; i < half; i++) {
+        const c = colorFor(scoreFor(TOKENS[tokenIdx], i));
+        cells += `<div class="rp-cell" style="width:${m.colWidth}px;height:${m.cellH}px;background:${c.fill};border-color:${c.stroke}"></div>`;
       }
-      cells.push(`<div class="rp-cell-gap" style="width:${m.colWidth}px">⋮ <span class="rp-cell-gap-num">${m.dModel - m.cellsToDraw}</span> more ⋮</div>`);
-      for (let i = halfRows; i < m.cellsToDraw; i++) {
-        const p = paletteFor(tokenIdx, i + 1000);
-        cells.push(`<div class="rp-cell" style="width:${m.colWidth}px;height:${m.cellH}px;background:${p.fill};border-color:${p.stroke}"></div>`);
+      cells += `<div class="rp-cell-gap" style="width:${m.colWidth}px">⋮ <span class="rp-cell-gap-num">${m.dModel - m.cellsToDraw}</span> more ⋮</div>`;
+      for (let i = half; i < m.cellsToDraw; i++) {
+        const c = colorFor(scoreFor(TOKENS[tokenIdx], i + 1000));
+        cells += `<div class="rp-cell" style="width:${m.colWidth}px;height:${m.cellH}px;background:${c.fill};border-color:${c.stroke}"></div>`;
       }
-      const h = m.cellsToDraw * (m.cellH + m.cellGap) + 22;
-      return {
-        svg: `<div class="rp-column" style="width:${m.colWidth}px">${cells.join('')}</div>`,
-        h,
-      };
+      return `<div class="rp-column" style="width:${m.colWidth}px">${cells}</div>`;
     }
 
-    function render() {
+    function renderStage() {
       const m = MODES[mode];
-      const colInner = TOKENS.map((tok, ti) => {
-        const c = mode === 'micro' ? renderCirclesCol(ti) : renderStripeCol(ti);
-        return `
+      const colInner = TOKENS.map((tok, ti) => `
           <div class="rp-column-wrap">
-            ${c.svg}
+            ${mode === 'micro' ? renderCirclesCol(ti) : renderStripeCol(ti)}
             <div class="rp-token">${tok}</div>
-          </div>`;
-      }).join('');
+          </div>`).join('');
       const colH = mode === 'micro'
         ? 8 + m.dModel * (m.cellR * 2 + m.cellGap)
         : m.cellsToDraw * (m.cellH + m.cellGap) + 22;
-
       stage.innerHTML = `
         <div class="rp-row">
           <div class="rp-axis" style="height:${colH}px" aria-label="d_model dimension">
@@ -1023,16 +1145,15 @@
           </div>
           ${colInner}
         </div>
-        <div class="rp-note">${m.note}</div>
-      `;
+        <div class="rp-note">${m.note}</div>`;
       root.querySelectorAll('.rp-toggle button').forEach(b =>
         b.classList.toggle('active', b.dataset.rp === mode));
     }
 
     root.querySelectorAll('.rp-toggle button').forEach(b => {
-      b.addEventListener('click', () => { mode = b.dataset.rp; render(); });
+      b.addEventListener('click', () => { mode = b.dataset.rp; renderStage(); });
     });
-    render();
+    renderStage();
   })();
 
   /* ============================================================

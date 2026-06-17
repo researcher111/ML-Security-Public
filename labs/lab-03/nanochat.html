@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>lab 03 — Train nanochat on Rivanna</title>
 <link rel="stylesheet" href="../_shared/lab-base.css?v=5">
-<link rel="stylesheet" href="styles.css?v=10">
+<link rel="stylesheet" href="styles.css?v=11">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism.min.css">
 <script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-core.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-bash.min.js"></script>
@@ -122,32 +122,54 @@ In October 2025, Andrej Karpathy released <a href="https://github.com/karpathy/n
 </table>
 
 <div class="viz" id="viz-residual">
-  <div class="viz-title">What a "residual position" actually is · the bridge from Lab 02</div>
+  <div class="viz-title">What a "residual position" actually is · a scorecard for every word</div>
   <div class="viz-description">
-    Remember Lab 02's <a href="../lab-02/microgpt.html#blocks">neural-network diagram</a>. Every block (Embedding, Attention, MLP, …) drew a <em>column of small circles</em>, and the lab's convention said: <strong>a circle is the output of a learned-weight projection — one number, one neuron's activation</strong>. The column is the layer's output for <em>one token</em>. That column has a name: <strong>a residual position</strong>. And the length of that column — the number of circles stacked in it — has a name too: <strong><code>d_model</code></strong>.
+    Forget the jargon for a second. Picture each word walking up and getting a <strong>scorecard</strong> — a fixed set of blanks, where every blank rates the word on some quality (how animal-like is it? is it plural? is it the subject?). <strong>One blank = one number = one of the little circles you drew in <a href="../lab-02/microgpt.html#blocks">Lab&nbsp;02</a>.</strong> A whole filled-in card is what the labs call a <strong>residual position</strong>, and the number of blanks on the card is <strong><code>d_model</code></strong>. A bigger model just hands out a <em>longer</em> card. Play with all three pieces below.
   </div>
 
-  <div class="rp-bridge">
-    <div class="rp-bridge-left">
-      <div class="rp-bridge-label">Lab 02 · one block, one token</div>
-      <div class="rp-bridge-svg" id="rp-bridge-svg"></div>
-      <div class="rp-bridge-caption">A single column of <strong>16 circles</strong> = a single residual position. You drew this column a dozen times in Lab 02, once per block.</div>
+  <!-- PANEL 1 · one word's scorecard, fully labeled & hoverable -->
+  <div class="sc-panel">
+    <div class="sc-head"><span class="sc-step">1</span> Pick a word — watch its scorecard fill in</div>
+    <div class="sc-words" id="sc-words"></div>
+    <div class="sc-body">
+      <div class="sc-card" id="sc-card"></div>
+      <div class="sc-readout" id="sc-readout"></div>
     </div>
-    <div class="rp-bridge-arrow">→ widen and repeat per token →</div>
-    <div class="rp-bridge-right">
-      <div class="rp-bridge-label">Lab 03 · the same column, but for every token, at every layer</div>
-      <div class="rp-bridge-caption">microGPT keeps <strong>16 numbers per token, per layer</strong>. nanochat keeps <strong>1,280</strong>. That eighty-times-wider column is the entire reason nanochat can hold richer ideas about each word.</div>
+    <p class="sc-foot">microGPT's card has <strong>16</strong> blanks, so we can show them all. (Real models don't actually label the blanks in English — the network invents its own qualities while training. These labels are a stand-in so the <em>idea</em> is visible.)</p>
+  </div>
+
+  <!-- PANEL 2 · how long is the card? drag to widen -->
+  <div class="sc-panel">
+    <div class="sc-head"><span class="sc-step">2</span> How long is the card? Drag to widen it.</div>
+    <div class="sc-width">
+      <div class="sc-width-colwrap"><div class="sc-width-col" id="sc-width-col"></div></div>
+      <div class="sc-width-ctl">
+        <input type="range" id="sc-width-slider" min="0" max="1000" value="0" aria-label="card length (d_model)">
+        <div class="sc-width-presets">
+          <button class="btn-mini" data-w="16">microGPT · 16</button>
+          <button class="btn-mini" data-w="128">128</button>
+          <button class="btn-mini" data-w="512">512</button>
+          <button class="btn-mini" data-w="1280">nanochat · 1,280</button>
+        </div>
+        <div class="sc-width-readout" id="sc-width-readout"></div>
+        <div class="sc-width-pool" id="sc-width-pool"></div>
+      </div>
     </div>
   </div>
 
-  <div class="rp-toggle">
-    <span class="rp-toggle-label">show me with:</span>
-    <button class="btn-mini" data-rp="micro">microGPT · 16 circles per column</button>
-    <button class="btn-mini" data-rp="nano">nanochat · 1,280 numbers per column</button>
+  <!-- PANEL 3 · one card per word, across the whole sentence -->
+  <div class="sc-panel">
+    <div class="sc-head"><span class="sc-step">3</span> Now one card per word, for the whole sentence</div>
+    <div class="rp-toggle">
+      <span class="rp-toggle-label">show me with:</span>
+      <button class="btn-mini" data-rp="micro">microGPT · 16-blank cards</button>
+      <button class="btn-mini" data-rp="nano">nanochat · 1,280-blank cards</button>
+    </div>
+    <div class="rp-stage" id="rp-stage" aria-label="Residual positions illustration"></div>
   </div>
-  <div class="rp-stage" id="rp-stage" aria-label="Residual positions illustration"></div>
+
   <p class="viz-caption">
-    Every column above is a residual position — the same object you saw in Lab 02's network diagram, just plotted across a sequence of tokens. The column's <em>height</em> is <code>d_model</code>. A wider column can hold more independent facts about that token (subject vs object, plural vs singular, who "<em>it</em>" refers to, the noun's animacy, …). The table cell <em>"How much info one residual position can carry"</em> means exactly this: <strong>16 numbers per position in microGPT, 1,280 numbers per position in nanochat</strong>.
+    Every column is one word's scorecard — a residual position. Its <em>height</em> is <code>d_model</code>: 16 blanks in microGPT, 1,280 in nanochat. More blanks = room to record subtler things about each word, which is the whole reason the bigger model can "understand" more. Note the two axes are different: reading <em>left to right</em> adds more <em>words</em>; making each card <em>taller</em> adds more <em>detail per word</em>.
   </p>
 </div>
 
@@ -801,6 +823,6 @@ DS 6042 — Lab 03 · nanochat on Rivanna/Afton. Lab style codified in <code>CLA
 </main>
 
 <script src="../_shared/lab-base.js?v=6"></script>
-<script src="viz.js?v=13"></script>
+<script src="viz.js?v=14"></script>
 </body>
 </html>
