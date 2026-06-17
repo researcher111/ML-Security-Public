@@ -456,12 +456,12 @@ rustbpe - INFO - Processing sequences from iterator (buffer_size: 8192)
 
 <div class="callout warn">
   <span class="label">Pick your own <code>--master_port</code></span>
-  <p><code>torchrun</code> opens a rendezvous port on the node to coordinate processes. On a shared Rivanna/Afton node, <strong>two people (or two jobs) using the same port collide</strong> — the second one dies with <code>RuntimeError: Address already in use</code>. <strong>Change <code>29500</code> to a different number</strong> (any free port, roughly 20000–60000). If you'd rather not coordinate, derive a per-user port from your UID so it's unique automatically:</p>
-<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">export MASTER_PORT=$((20000 + $UID % 10000))</span></pre>
+  <p><code>torchrun</code> opens a rendezvous port on the node to coordinate processes. On a shared Rivanna/Afton node, <strong>two people (or two jobs) using the same port collide</strong> — the second one dies with <code>RuntimeError: Address already in use</code>. <strong>Change <code>29500</code> to a different number</strong> (any free port, roughly 20000–60000). If you'd rather not coordinate, derive a per-user port from your username so it's unique automatically (<code>$UID</code> is empty in some HPC shells, so we hash <code>$USER</code> instead):</p>
+<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">export MASTER_PORT=$(( ($(echo "$USER" | cksum | cut -d' ' -f1) % 20000) + 20000 ))</span></pre>
   <p>…then pass <code>--master_port=$MASTER_PORT</code> below. If you still hit "address already in use," that exact port is taken — just bump the number and rerun.</p>
 </div>
 
-<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">torchrun --nproc_per_node=1 --master_port=29500 -m scripts.base_train \
+<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">torchrun --nproc_per_node=1 --master_port=$MASTER_PORT -m scripts.base_train \
     --depth $DEPTH --device-batch-size $DEVICE_BATCH_SIZE \
     --num-iterations 2000 2>&amp;1 | tee train.log</span>
 [base_train] Model has 16.4M parameters
@@ -491,7 +491,7 @@ rustbpe - INFO - Processing sequences from iterator (buffer_size: 8192)
   <div class="cmd-line" id="cmd-line">
     <span class="cmd-part" data-k="torchrun" tabindex="0">torchrun</span>
     <span class="cmd-part" data-k="nproc" tabindex="0">--nproc_per_node=1</span>
-    <span class="cmd-part" data-k="master_port" tabindex="0">--master_port=29500</span>
+    <span class="cmd-part" data-k="master_port" tabindex="0">--master_port=$MASTER_PORT</span>
     <span class="cmd-part" data-k="module" tabindex="0">-m scripts.base_train</span>
     <span class="cmd-part" data-k="depth" tabindex="0">--depth $DEPTH</span>
     <span class="cmd-part" data-k="dbs" tabindex="0">--device-batch-size $DEVICE_BATCH_SIZE</span>
