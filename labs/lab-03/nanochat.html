@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>lab 03 — Train nanochat on Rivanna</title>
 <link rel="stylesheet" href="../_shared/lab-base.css?v=5">
-<link rel="stylesheet" href="styles.css?v=11">
+<link rel="stylesheet" href="styles.css?v=12">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism.min.css">
 <script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-core.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-bash.min.js"></script>
@@ -173,7 +173,7 @@ In October 2025, Andrej Karpathy released <a href="https://github.com/karpathy/n
   </p>
 </div>
 
-<p>Karpathy's design principle: a single <code><span class="gloss" data-gloss="depth">--depth</span></code> dial sets everything else. Depth 20 produces a competent small chatbot; depth 24–26 reproduces GPT-2's CORE score; depth 30+ gets you into territory that needs serious compute. You'll run depth 6 or 8 in this lab, because that fits in a single GPU and finishes during one Code Server session.</p>
+<p>Karpathy's design principle: a single <code><span class="gloss" data-gloss="depth">--depth</span></code> dial sets everything else. Depth 20 produces a competent small chatbot; depth 24–26 reproduces GPT-2's CORE score; depth 30+ gets you into territory that needs serious compute. You'll run depth 4 or 6 in this lab, because that fits in a single GPU and finishes during one Code Server session.</p>
 
 <div class="callout insight">
   <span class="label">why this is interesting · the same code path</span>
@@ -196,7 +196,7 @@ In October 2025, Andrej Karpathy released <a href="https://github.com/karpathy/n
 <!-- ============================================================ -->
 <h2 id="rivanna">3 · The HPC environment · Rivanna, Afton, and Open OnDemand</h2>
 
-<p>UVA Research Computing operates two clusters under one front end. <strong><span class="gloss" data-gloss="rivanna-afton">Rivanna</span></strong> is the older, broader cluster (CPUs, older GPUs, large memory nodes). <strong>Afton</strong> is the newer, GPU-heavy expansion (A100, H100, MIG-sliced nodes). For nanochat we'll use Afton's <strong>GPU-MIG</strong> partition — a sliced fraction of a GPU, which is plenty for a depth-6 model and far quicker to get than a whole card. Both share the same scheduler (<span class="gloss" data-gloss="slurm">SLURM</span>), the same storage (<code>/home</code>, <code>/scratch</code>, <code>/project</code>), and the same front door — <a href="https://ood.hpc.virginia.edu"><strong>Open OnDemand</strong></a>.</p>
+<p>UVA Research Computing operates two clusters under one front end. <strong><span class="gloss" data-gloss="rivanna-afton">Rivanna</span></strong> is the older, broader cluster (CPUs, older GPUs, large memory nodes). <strong>Afton</strong> is the newer, GPU-heavy expansion (A100, H100, MIG-sliced nodes). For nanochat we'll use Afton's <strong>GPU-MIG</strong> partition — a sliced fraction of a GPU, which is plenty for a depth-4 model and far quicker to get than a whole card. Both share the same scheduler (<span class="gloss" data-gloss="slurm">SLURM</span>), the same storage (<code>/home</code>, <code>/scratch</code>, <code>/project</code>), and the same front door — <a href="https://ood.hpc.virginia.edu"><strong>Open OnDemand</strong></a>.</p>
 
 <p>Open OnDemand is the web portal that lets you launch interactive sessions (VS Code, JupyterLab, full Linux desktop, RStudio) directly inside a SLURM job without ever writing an <code>sbatch</code> script. For this lab we use the <strong>Code Server</strong> app — VS Code in your browser, running on a compute node with the GPU you reserved. Two benefits: (1) you get a real IDE, terminal, and file browser; (2) Code Server forwards arbitrary ports back to your laptop with one click, which is how you'll reach nanochat's chat UI in §7.</p>
 
@@ -224,10 +224,10 @@ In October 2025, Andrej Karpathy released <a href="https://github.com/karpathy/n
 <table>
   <thead><tr><th>Field</th><th>Value for this lab</th><th>Why</th></tr></thead>
   <tbody>
-    <tr><td>Rivanna/Afton Partition</td><td><strong>GPU-MIG</strong></td><td>A MIG slice (a fraction of an A100/H100) is enough for our depth-6 run, and these are far easier to get than a whole GPU node. <strong>Pick <em>GPU-MIG</em>, not <em>GPU</em>.</strong></td></tr>
+    <tr><td>Rivanna/Afton Partition</td><td><strong>GPU-MIG</strong></td><td>A MIG slice (a fraction of an A100/H100) is enough for our depth-4 run, and these are far easier to get than a whole GPU node. <strong>Pick <em>GPU-MIG</em>, not <em>GPU</em>.</strong></td></tr>
     <tr><td>Number of hours</td><td><strong>4</strong></td><td>Depth-6 pretrain + SFT + chat; a MIG slice is slower than a full card, so give yourself the margin.</td></tr>
     <tr><td>Number of cores</td><td><strong>2</strong></td><td>GPU-MIG allows 1–2 cores; 2 is plenty for the tokenizer and data loading.</td></tr>
-    <tr><td>Memory Request</td><td><strong>30 GB</strong></td><td>Enough for the corpus shards + tokenizer in RAM at depth 6.</td></tr>
+    <tr><td>Memory Request</td><td><strong>30 GB</strong></td><td>Enough for the corpus shards + tokenizer in RAM at depth 4.</td></tr>
     <tr><td>Allocation</td><td>your class allocation</td><td>Your instructor has the allocation code; ask before class.</td></tr>
     <tr><td>Working Directory</td><td><strong><code>/scratch/$USER</code></strong></td><td>Where Code Server opens. Must be on <code>/scratch</code> — your home quota is tiny and slow. <strong>Do not leave this on <code>HOME</code>.</strong></td></tr>
   </tbody>
@@ -235,7 +235,7 @@ In October 2025, Andrej Karpathy released <a href="https://github.com/karpathy/n
 
 <div class="callout note">
   <span class="label">⚠ Set Working Directory to /scratch — not home</span>
-  <p>The one field people get wrong: point <strong>Working Directory</strong> at <code>/scratch/$USER</code> (type the literal path with your own computing ID, e.g. <code>/scratch/mst3k</code>, if the form doesn't expand <code>$USER</code>). Home has a tiny quota and slow I/O — the corpus plus a single ~160 MB checkpoint will blow past it, and training will crawl or fail outright. Older screenshots may still show <code>HOME</code>; change it.</p>
+  <p>The one field people get wrong: point <strong>Working Directory</strong> at <code>/scratch/$USER</code> (type the literal path with your own computing ID, e.g. <code>/scratch/mst3k</code>, if the form doesn't expand <code>$USER</code>). Home has a tiny quota and slow I/O — the corpus plus a single ~64 MB checkpoint will blow past it, and training will crawl or fail outright. Older screenshots may still show <code>HOME</code>; change it.</p>
 </div>
 
 <figure class="lab-figure">
@@ -345,11 +345,11 @@ Receiving objects: 100% (1,247/1,247), 4.8 MiB | 9.2 MiB/s, done.
 </figure>
 
 <h3>5.3 Pick a small-but-real depth</h3>
-<p>The default <code>runs/speedrun.sh</code> assumes 8×H100 and depth 24. We're running on a single <strong>GPU-MIG slice</strong>; let's pick depth 6 (≈40M parameters). A MIG slice is only a fraction of a full GPU, so it has less VRAM and runs slower — the wall-clock estimates later in the lab assume a dedicated card, so expect your run to take longer. Override the depth on the command line:</p>
+<p>The default <code>runs/speedrun.sh</code> assumes 8×H100 and depth 24. We're running on a single <strong>GPU-MIG slice</strong>; let's pick depth 4 (≈16M parameters). A MIG slice is only a fraction of a full GPU, so it has less VRAM and runs slower — the wall-clock estimates later in the lab assume a dedicated card, so expect your run to take longer. Override the depth on the command line:</p>
 
-<pre><code class="language-bash">export DEPTH=6
+<pre><code class="language-bash">export DEPTH=4
 export DEVICE_BATCH_SIZE=8         # MIG slice has limited VRAM; lower further if you OOM
-export NANOCHAT_BASE_DIR=/scratch/$USER/lab03/nanochat-data
+export NANOCHAT_BASE_DIR=/scratch/$USER/lab03/nanochat
 mkdir -p "$NANOCHAT_BASE_DIR"</code></pre>
 
 <div class="callout note">
@@ -373,13 +373,28 @@ mkdir -p "$NANOCHAT_BASE_DIR"</code></pre>
 </div>
 
 <h3>6.0 Download the training corpus</h3>
-<p>nanochat trains on a slice of FineWeb-edu, downloaded as parquet shards into <code>$NANOCHAT_BASE_DIR/base_data/</code>. <strong>This step must run before §6.1</strong> — <code>tok_train.py</code> reads the shards from disk and will exit with <code>FileNotFoundError</code> if they aren't there.</p>
+<p>nanochat trains on <strong>ClimbMix</strong> (the <code>karpathy/climbmix-400b-shuffle</code> dataset on HuggingFace), downloaded as parquet shards into <code>$NANOCHAT_BASE_DIR/base_data_climbmix/</code>. <strong>This step must run before §6.1</strong> — <code>tok_train.py</code> reads the shards from disk and will exit with <code>FileNotFoundError</code> if they aren't there. How many shards you pull depends on whether you're doing the in-class run or the take-home assignment.</p>
 
 <div class="callout note">
-  <span class="label">Download the corpus</span>
-<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">bash runs/speedrun.sh --download-only</span></pre>
-  <p>Verify the data landed:</p>
-<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">ls "$NANOCHAT_BASE_DIR/base_data" | head</span>
+  <span class="label">Option A · in class — 8 shards (~2 GB)</span>
+<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">python -m nanochat.dataset -n 8</span></pre>
+  <p>Downloads 8 training shards plus the validation shard — enough for the tokenizer <em>and</em> a depth-4 / 2,000-iteration run (which touches well under one shard). This is the exact command <code>runs/speedrun.sh</code> calls internally for its tokenizer stage. <strong>Don't run <code>speedrun.sh</code> itself</strong>: it ignores all flags and would kick off the full 8×H100 GPT-2-grade pipeline.</p>
+</div>
+
+<div class="callout note">
+  <span class="label">Option B · assignment — full dataset (all 6,542 shards)</span>
+<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">python -m nanochat.dataset -n -1</span></pre>
+  <p><code>-n -1</code> downloads <em>every</em> shard — all 6,542 (~400&nbsp;B tokens). Use this for the take-home assignment, where you train a larger model for longer. You can also pull an intermediate count (e.g. <code>-n 170</code>, what the GPT-2-grade speedrun uses) if you want more than 8 but not the whole set. The download resumes where it left off, so a killed job can be restarted with the same command.</p>
+</div>
+
+<div class="callout warn">
+  <span class="label">Mind the disk and the clock</span>
+  <p>The full 6,542 shards are roughly <strong>650&nbsp;GB on disk</strong> (~100&nbsp;MB/shard) and take a long time to pull over the network — start it well before you need it, and confirm your <code>/scratch</code> quota has room (<code>du -sh "$NANOCHAT_BASE_DIR"</code>). For Option B, run the download inside an <code>sbatch</code> job or <code>tmux</code> session, not an interactive Code Server tab that times out. Even a large assignment model consumes only a fraction of 400&nbsp;B tokens, so the speedrun's <strong>170 shards</strong> is a sensible middle ground if you don't need the entire corpus.</p>
+</div>
+
+<div class="callout note">
+  <span class="label">Verify the data landed</span>
+<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">ls "$NANOCHAT_BASE_DIR/base_data_climbmix" | head</span>
 shard_00000.parquet
 shard_00001.parquet
 shard_00002.parquet
@@ -438,16 +453,24 @@ rustbpe - INFO - Processing sequences from iterator (buffer_size: 8192)
 </div>
 
 <h3>6.2 Pretrain the base model</h3>
-<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">torchrun --nproc_per_node=1 -m scripts.base_train \
+
+<div class="callout warn">
+  <span class="label">Pick your own <code>--master_port</code></span>
+  <p><code>torchrun</code> opens a rendezvous port on the node to coordinate processes. On a shared Rivanna/Afton node, <strong>two people (or two jobs) using the same port collide</strong> — the second one dies with <code>RuntimeError: Address already in use</code>. <strong>Change <code>29500</code> to a different number</strong> (any free port, roughly 20000–60000). If you'd rather not coordinate, derive a per-user port from your UID so it's unique automatically:</p>
+<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">export MASTER_PORT=$((20000 + $UID % 10000))</span></pre>
+  <p>…then pass <code>--master_port=$MASTER_PORT</code> below. If you still hit "address already in use," that exact port is taken — just bump the number and rerun.</p>
+</div>
+
+<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">torchrun --nproc_per_node=1 --master_port=29500 -m scripts.base_train \
     --depth $DEPTH --device-batch-size $DEVICE_BATCH_SIZE \
     --num-iterations 2000 2>&amp;1 | tee train.log</span>
-[base_train] Model has 42.1M parameters
+[base_train] Model has 16.4M parameters
 [base_train] step    0 | loss 9.21 | tokens/s   12,400
 [base_train] step  100 | loss 6.43 | tokens/s   88,200
 [base_train] step  500 | loss 4.18 | tokens/s   91,500
 [base_train] step 1000 | loss 3.61 | tokens/s   91,800
 [base_train] step 2000 | loss 2.97 | tokens/s   91,800
-[base_train] saved base_model.pt (160 MB)
+[base_train] saved base_model.pt (64 MB)
 <span class="term-hl">elapsed: 13m 12s · final loss 2.97 · CORE n/a (too small)</span></pre>
 
 <figure class="lab-figure">
@@ -468,6 +491,7 @@ rustbpe - INFO - Processing sequences from iterator (buffer_size: 8192)
   <div class="cmd-line" id="cmd-line">
     <span class="cmd-part" data-k="torchrun" tabindex="0">torchrun</span>
     <span class="cmd-part" data-k="nproc" tabindex="0">--nproc_per_node=1</span>
+    <span class="cmd-part" data-k="master_port" tabindex="0">--master_port=29500</span>
     <span class="cmd-part" data-k="module" tabindex="0">-m scripts.base_train</span>
     <span class="cmd-part" data-k="depth" tabindex="0">--depth $DEPTH</span>
     <span class="cmd-part" data-k="dbs" tabindex="0">--device-batch-size $DEVICE_BATCH_SIZE</span>
@@ -495,7 +519,7 @@ for line in open("train.log"):
 plt.figure(figsize=(7, 4))
 plt.plot(steps, losses, lw=1)
 plt.xlabel("step"); plt.ylabel("loss")
-plt.title(f"base_train · depth 6 · {len(steps)} steps")
+plt.title(f"base_train · depth 4 · {len(steps)} steps")
 plt.grid(alpha=0.3); plt.tight_layout()
 plt.savefig("loss.png", dpi=120)
 print(f"wrote loss.png ({len(steps)} points)")</code></pre>
@@ -507,7 +531,7 @@ print(f"wrote loss.png ({len(steps)} points)")</code></pre>
   <figcaption>The curve <code>plot_loss.py</code> produces from <code>train.log</code> (this example is a 3,000-step run; with <code>--num-iterations 2000</code> you stop a little earlier, on the same flat part). The slope flattens by ~1,500 steps — at this scale the model has learned what it's going to learn from this dataset. Going further with more compute (depth 8, 10k steps) gets a meaningfully better model; depth 24 with 25k steps is GPT-2 quality.</figcaption>
 </figure>
 
-<p><strong>What this phase does.</strong> It trains the base GPT to predict the next token on raw text — the single longest step in the pipeline (2–3 hours on 8×H100 at depth 24; ~20 minutes on a full GPU at depth 6, longer on the MIG slice we booked). What you get is a language model that completes sentences fluently but doesn't yet know what a chat is — that's the next phase's job.</p>
+<p><strong>What this phase does.</strong> It trains the base GPT to predict the next token on raw text — the single longest step in the pipeline (2–3 hours on 8×H100 at depth 24; ~12 minutes on a full GPU at depth 4, longer on the MIG slice we booked). What you get is a language model that completes sentences fluently but doesn't yet know what a chat is — that's the next phase's job.</p>
 
 <div class="viz" id="viz-scale">
   <div class="viz-title">Try it · one knob, two models · microGPT → nanochat</div>
@@ -521,17 +545,17 @@ print(f"wrote loss.png ({len(steps)} points)")</code></pre>
       <svg id="scale-micro-svg" class="scale-svg" viewBox="0 0 120 320" preserveAspectRatio="xMidYMax meet" aria-hidden="true"></svg>
     </div>
     <div class="scale-col">
-      <div class="scale-col-head">nanochat <span class="scale-col-sub" id="scale-nano-sub">depth 6</span></div>
+      <div class="scale-col-head">nanochat <span class="scale-col-sub" id="scale-nano-sub">depth 4</span></div>
       <svg id="scale-nano-svg" class="scale-svg" viewBox="0 0 200 320" preserveAspectRatio="xMidYMax meet" aria-hidden="true"></svg>
     </div>
   </div>
 
   <div class="scale-controls">
     <label for="scale-depth">depth</label>
-    <input type="range" id="scale-depth" min="1" max="24" step="1" value="6">
-    <output id="scale-depth-out">6</output>
+    <input type="range" id="scale-depth" min="1" max="24" step="1" value="4">
+    <output id="scale-depth-out">4</output>
     <div class="scale-presets">
-      <button type="button" class="btn-mini" data-depth="6">this lab · 6</button>
+      <button type="button" class="btn-mini" data-depth="4">this lab · 4</button>
       <button type="button" class="btn-mini" data-depth="20">default · 20</button>
       <button type="button" class="btn-mini" data-depth="24">≈ GPT-2 · 24</button>
     </div>
@@ -546,24 +570,24 @@ print(f"wrote loss.png ({len(steps)} points)")</code></pre>
   </div>
 
   <div class="viz-caption">
-    Depth is the <em>only</em> dial you turn. Raising it does two things at once: it stacks <strong>more layers</strong> (one per unit of depth) <em>and</em> <strong>widens every layer</strong> — nanochat sets the width to 64 × depth. Because each layer's parameter count grows with the <em>square</em> of its width, the total climbs faster than the square of depth. Going from microGPT up to this lab's depth&nbsp;6 is already a ~10,000× jump in parameters (4,200 → ~40M); the default depth&nbsp;20 is another ~14×. That super-linear curve is the whole reason bigger models cost so much more to train — and why this pretraining step is the slow one.
+    Depth is the <em>only</em> dial you turn. Raising it does two things at once: it stacks <strong>more layers</strong> (one per unit of depth) <em>and</em> <strong>widens every layer</strong> — nanochat sets the width to 64 × depth. Because each layer's parameter count grows with the <em>square</em> of its width, the total climbs faster than the square of depth. Going from microGPT up to this lab's depth&nbsp;4 is already a ~3,900× jump in parameters (4,200 → ~16M); the default depth&nbsp;20 is another ~34×. That super-linear curve is the whole reason bigger models cost so much more to train — and why this pretraining step is the slow one.
   </div>
 </div>
 
 <h3>6.3 Supervised fine-tune for chat</h3>
 <pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">python -m scripts.chat_sft --num-iterations 800</span>
-[chat_sft] Loaded base model: 42.1M params
+[chat_sft] Loaded base model: 16.4M params
 [chat_sft] step   0 | loss 4.18
 [chat_sft] step 100 | loss 2.91
 [chat_sft] step 800 | loss 2.04
-[chat_sft] saved sft_model.pt (160 MB)
+[chat_sft] saved sft_model.pt (64 MB)
 <span class="term-hl">elapsed: 14m 22s</span></pre>
 
 <p>This is the phase that makes the model <em>chat</em>. The training data shifts from raw text to dialogues formatted as <code>&lt;user&gt;... &lt;/user&gt; &lt;assistant&gt;... &lt;/assistant&gt;</code> turns. The model learns the conversational shape on top of the language it already knows.</p>
 
 <div class="callout note">
   <span class="label">How many iterations? (and a time-saver)</span>
-  <p>SFT is short by design — it teaches the conversational <em>shape</em>, not new knowledge, so it needs far less compute than pretraining. Left to its default, <code>chat_sft</code> runs a single epoch over nanochat's small SFT mixture — about <strong>100 steps in ~2 minutes</strong>. We pass <code>--num-iterations 800</code> to make a few passes, which noticeably sharpens the chat behavior. <strong>Running low on session time? Use <code>--num-iterations 100</code></strong> — one quick epoch still gives a working chat model. Don't go overboard: past a couple of epochs you mostly <em>overfit</em> the small SFT set, and the real ceiling on chat quality at depth 6 is the base model, not how long you SFT.</p>
+  <p>SFT is short by design — it teaches the conversational <em>shape</em>, not new knowledge, so it needs far less compute than pretraining. Left to its default, <code>chat_sft</code> runs a single epoch over nanochat's small SFT mixture — about <strong>100 steps in ~2 minutes</strong>. We pass <code>--num-iterations 800</code> to make a few passes, which noticeably sharpens the chat behavior. <strong>Running low on session time? Use <code>--num-iterations 100</code></strong> — one quick epoch still gives a working chat model. Don't go overboard: past a couple of epochs you mostly <em>overfit</em> the small SFT set, and the real ceiling on chat quality at depth 4 is the base model, not how long you SFT.</p>
 </div>
 
 <p>What does an SFT training datum look like, and what does the script actually do that pretraining didn't? Two pieces — the data, and the masked loss:</p>
@@ -643,7 +667,7 @@ optimizer.step()</code></pre>
 </div>
 
 <h3>6.4 (optional) Reinforcement learning</h3>
-<p>The timed lab stops after SFT — but if you have GPU time left, there's a fourth training phase. It uses <strong><span class="gloss" data-gloss="grpo">GRPO</span></strong> (Group Relative Policy Optimization) to push the SFT model toward preferred responses — the algorithm DeepSeek popularized, which needs no separate reward model. Output: <code>rl_model.pt</code>. Wall time: ~30 minutes at depth 6. <em>What you get:</em> noticeably better answers on reasoning tasks (GSM8K, ARC).</p>
+<p>The timed lab stops after SFT — but if you have GPU time left, there's a fourth training phase. It uses <strong><span class="gloss" data-gloss="grpo">GRPO</span></strong> (Group Relative Policy Optimization) to push the SFT model toward preferred responses — the algorithm DeepSeek popularized, which needs no separate reward model. Output: <code>rl_model.pt</code>. Wall time: ~20 minutes at depth 4. <em>What you get:</em> noticeably better answers on reasoning tasks (GSM8K, ARC).</p>
 <pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">python -m scripts.chat_rl --model data/sft_model.pt</span></pre>
 <p>Skip it if your job time is running low; the chat model from §6.3 is enough for the assignment. While it runs, here's the core idea — sample, score, reinforce:</p>
 
@@ -686,11 +710,11 @@ optimizer.step()</code></pre>
 <p>The simplest interface — no web server, no port forwarding, no proxy in the way:</p>
 <pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">python -m scripts.chat_cli</span>      <span class="term-comment"># add  -i sft  if it doesn't default to your SFT model</span></pre>
 
-<p>Type a prompt and the model streams its reply right in the terminal. Try a few — at depth 6 the answers are short, sometimes incoherent, occasionally surprisingly competent. The "wow" isn't quality; it's that <em>any</em> coherent text comes back from 42M parameters you trained in under an hour.</p>
+<p>Type a prompt and the model streams its reply right in the terminal. Try a few — at depth 4 the answers are short, sometimes incoherent, occasionally surprisingly competent. The "wow" isn't quality; it's that <em>any</em> coherent text comes back from ~16M parameters you trained in under an hour.</p>
 
 <figure class="lab-figure">
-  <img src="screenshots/08-sample-conversation.png" alt="chat_cli terminal session in NanoChat Interactive Mode: asked the capital of Jamaica, the depth-6 model confidently answers with hallucinated nonsense">
-  <figcaption>The <code>chat_cli</code> terminal session. Ask it the capital of Jamaica and the depth-6 model confidently answers "a global political union…" — exactly the "early-2019 chatbot" quality you'd expect: fluent, grammatical, and wrong. That's the lesson: the gap between this and GPT-4 is roughly 10,000× more compute and 100× more parameters. Everything else is the same code path.</figcaption>
+  <img src="screenshots/08-sample-conversation.png" alt="chat_cli terminal session in NanoChat Interactive Mode: asked the capital of Jamaica, the depth-4 model confidently answers with hallucinated nonsense">
+  <figcaption>The <code>chat_cli</code> terminal session. Ask it the capital of Jamaica and the depth-4 model confidently answers "a global political union…" — exactly the "early-2019 chatbot" quality you'd expect: fluent, grammatical, and wrong. That's the lesson: the gap between this and GPT-4 is roughly 10,000× more compute and 100× more parameters. Everything else is the same code path.</figcaption>
 </figure>
 
 <h3>7.2 (Optional) The browser chat UI</h3>
@@ -710,8 +734,8 @@ Loading nanochat models across GPUs...
 </figure>
 
 <figure class="lab-figure">
-  <img src="screenshots/07-chat-ui.png" alt="nanochat web UI with a UVA-navy header, showing a question about the capital of Egypt and the depth-6 model degenerating into repeated text">
-  <figcaption>The nanochat web UI in your browser — the UVA-navy "nanochat — trained by you" header is the course fork, and the chat works through the OOD proxy thanks to its relative-path patch. Ask the capital of Egypt and the depth-6 model degenerates into repetition (<em>"Apis Apis Apis…"</em>): fluent for a few words, then it loses the thread. That's depth-6 quality — the pipeline is the production one, the model is just tiny.</figcaption>
+  <img src="screenshots/07-chat-ui.png" alt="nanochat web UI with a UVA-navy header, showing a question about the capital of Egypt and the depth-4 model degenerating into repeated text">
+  <figcaption>The nanochat web UI in your browser — the UVA-navy "nanochat — trained by you" header is the course fork, and the chat works through the OOD proxy thanks to its relative-path patch. Ask the capital of Egypt and the depth-4 model degenerates into repetition (<em>"Apis Apis Apis…"</em>): fluent for a few words, then it loses the thread. That's depth-4 quality — the pipeline is the production one, the model is just tiny.</figcaption>
 </figure>
 
 <div class="callout note">
@@ -802,13 +826,13 @@ Loading nanochat models across GPUs...
 <p>If you used <code>tmux</code> (Best Practice #4) your training keeps running on the compute node; just re-connect to OOD, re-open Code Server, attach the existing tmux session. If you didn't use tmux, the training died. Re-launch — checkpoints from before the disconnect are still saved.</p>
 
 <h3>The model says weird things. Is that normal?</h3>
-<p>At depth 6 with one hour of pretrain, yes. The model has 42M parameters and has seen a tiny fraction of the corpus a real model trains on. Coherent-sounding sentences with factual errors is the baseline. Sentence fragments, repeated tokens, and confident nonsense are also normal. Lab 12 (the LLM-security module) explores why even <em>large</em> models exhibit these failure modes and how to detect them.</p>
+<p>At depth 4 with one hour of pretrain, yes. The model has ~16M parameters and has seen a tiny fraction of the corpus a real model trains on. Coherent-sounding sentences with factual errors is the baseline. Sentence fragments, repeated tokens, and confident nonsense are also normal. Lab 12 (the LLM-security module) explores why even <em>large</em> models exhibit these failure modes and how to detect them.</p>
 
 <h3>How do I get a bigger allocation?</h3>
 <p>Your class allocation is set by the instructor; ask if you need more. UVA Research Computing also has a research-allocation request process — useful for projects beyond the course. Submit a paragraph describing your project at <a href="https://www.rc.virginia.edu/userinfo/hpc/queues-allocations/">rc.virginia.edu</a>.</p>
 
 <h3>Can I do this from my laptop with a local GPU?</h3>
-<p>If your laptop has an NVIDIA GPU with ≥16GB VRAM (RTX 4080+, M-series with Metal Performance Shaders, AMD with ROCm), yes — same commands, no SLURM. Performance is comparable to one A100 for depth 6. The HPC etiquette section doesn't apply; everything else does.</p>
+<p>If your laptop has an NVIDIA GPU with ≥16GB VRAM (RTX 4080+, M-series with Metal Performance Shaders, AMD with ROCm), yes — same commands, no SLURM. Performance is comparable to one A100 for depth 4. The HPC etiquette section doesn't apply; everything else does.</p>
 
 <h3>I'm getting OOM on the GPU. What do I lower?</h3>
 <p>In order: <code>--device-batch-size</code> (halve it), then <code>--seq-len</code> (cut to 512), then <code>--depth</code> (down to 4). The repo has a <code>--gradient-accumulation</code> flag that trades wall-clock for memory — set it to 4 and you can usually fit a depth-8 model on an A100.</p>
@@ -823,6 +847,6 @@ DS 6042 — Lab 03 · nanochat on Rivanna/Afton. Lab style codified in <code>CLA
 </main>
 
 <script src="../_shared/lab-base.js?v=6"></script>
-<script src="viz.js?v=14"></script>
+<script src="viz.js?v=16"></script>
 </body>
 </html>

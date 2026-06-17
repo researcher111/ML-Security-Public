@@ -2,6 +2,14 @@
 /* Lab 03 — per-lab styles (nanochat on Rivanna)                  */
 /* ============================================================ */
 
+/* .callout.warn — amber warning variant (disk/time cautions).
+   Base .callout + .insight/.note live in _shared/lab-base.css;
+   this is purely additive. */
+.callout.warn {
+  background: #fdf3e3;
+  border-left: 3px solid #d9a441;
+}
+
 /* Match code-block font to body paragraph (18px) — overrides
    the 14px default in _shared/lab-base.css for this lab only. */
 pre code { font-size: 18px; line-height: 1.55; }

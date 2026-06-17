@@ -33,7 +33,7 @@
       },
       {
         id: 'pre', name: 'Pretrain', x: 160, tag: '~20 min – 3 h',
-        body: 'Train the base GPT to predict the next token on raw text. Script: <code>scripts/base_train.py</code>. Output: <code>base_model.pt</code>. Dominates wall-clock — depth-6 on one A100 is ~20 min, depth-24 on 8×H100 is ~2 h. <em>What you get:</em> a model that completes sentences fluently but does not know what a chat is. It will continue any prompt for as long as you let it generate.',
+        body: 'Train the base GPT to predict the next token on raw text. Script: <code>scripts/base_train.py</code>. Output: <code>base_model.pt</code>. Dominates wall-clock — depth-4 on one A100 is ~12 min, depth-24 on 8×H100 is ~2 h. <em>What you get:</em> a model that completes sentences fluently but does not know what a chat is. It will continue any prompt for as long as you let it generate.',
       },
       {
         id: 'sft', name: 'SFT', x: 300, tag: '~15 min',
@@ -139,7 +139,7 @@
         title: 'depth (the dial)',
         body:
           '<p>nanochat\'s single complexity knob — the number of transformer layers in the model. Setting <code>--depth N</code> automatically configures every other hyperparameter: hidden width, attention head count, learning rate, total training steps, weight decay. The design philosophy is "you should have to think about exactly one number."</p>' +
-          '<p>Roughly: depth 4 ≈ ~10M params (toy), depth 6 ≈ 40M (this lab), depth 12 ≈ ~200M, depth 20 ≈ 560M, depth 24 ≈ ~1.6B (GPT-2 capability), depth 30+ ≈ serious compute. The auto-scaling is calibrated against <a href="https://arxiv.org/abs/2203.15556">Chinchilla scaling laws</a> so each depth value is "compute-optimal" at its size.</p>',
+          '<p>Roughly: depth 4 ≈ ~16M params (this lab), depth 6 ≈ ~40M, depth 12 ≈ ~200M, depth 20 ≈ 560M, depth 24 ≈ ~1.6B (GPT-2 capability), depth 30+ ≈ serious compute. The auto-scaling is calibrated against <a href="https://arxiv.org/abs/2203.15556">Chinchilla scaling laws</a> so each depth value is "compute-optimal" at its size.</p>',
       },
       'sft': {
         title: 'SFT · supervised fine-tuning',
@@ -157,7 +157,7 @@
         title: 'CORE',
         body:
           '<p>The benchmark nanochat tracks on its leaderboard. Defined in <a href="https://arxiv.org/abs/2406.11794">the DCLM paper</a> (DataComp-LM, 2024): centered accuracy across 22 in-context-learning tasks (HellaSwag, ARC-Challenge, MMLU subsets, et al.). A single scalar that summarizes "how good is this base model at language understanding without any chat-specific training."</p>' +
-          '<p>GPT-2 scores 0.256525 on CORE. nanochat\'s headline goal is to beat that score under $100 of compute. At depth 6 (this lab\'s scale) CORE isn\'t meaningful — the model is too small. At depth 16+ the metric starts to be informative.</p>',
+          '<p>GPT-2 scores 0.256525 on CORE. nanochat\'s headline goal is to beat that score under $100 of compute. At depth 4 (this lab\'s scale) CORE isn\'t meaningful — the model is too small. At depth 16+ the metric starts to be informative.</p>',
       },
       'port-forwarding': {
         title: 'port forwarding',
@@ -1362,14 +1362,16 @@
       '<strong>torchrun</strong> — PyTorch\'s distributed launcher. It starts one worker process per GPU and wires up the environment they use to coordinate (each worker\'s rank, the total world size, the address they sync through). On a single GPU it behaves almost like plain <code>python</code> — but using it now means this exact command also runs on 8 GPUs later, unchanged except for the next flag.',
     nproc:
       '<strong>--nproc_per_node=1</strong> — how many worker processes to launch on this machine, one per GPU. <code>=1</code> is single-GPU, which is what your Code Server session has. On a node with 8×H100 you\'d write <code>=8</code>; torchrun starts 8 copies that each take a slice of the batch and average their gradients together every step.',
+    master_port:
+      '<strong>--master_port=29500</strong> — sets the network port torchrun uses for inter-process communication between GPU workers. On a shared cluster, multiple students\' jobs may land on the same node, so <em>everyone using the same port collides</em> — the second job dies with a cryptic "address already in use" error. <strong>Pick your own port:</strong> 29500 is just an example, so change it to any unused number (roughly 20000–60000), or derive a unique one from your UID with <code>--master_port=$((20000 + $UID % 10000))</code>. If a port is taken, just bump the number and rerun.',
     module:
       '<strong>-m scripts.base_train</strong> — <code>-m</code> runs a module by its import path instead of a file path: Python imports <code>scripts/base_train.py</code> and executes it. It\'s like <code>python scripts/base_train.py</code>, except <code>-m</code> sets up the package properly so the script\'s own <code>scripts.*</code> imports resolve.',
     depth:
-      '<strong>--depth $DEPTH</strong> — the one knob. nanochat derives almost everything else from it: the number of layers (= depth) and the model width (= 64 × depth). <code>$DEPTH</code> is the shell variable you set back in §5.3 (6 for this lab). See the scaling widget below for exactly what turning this up does to the model.',
+      '<strong>--depth $DEPTH</strong> — the one knob. nanochat derives almost everything else from it: the number of layers (= depth) and the model width (= 64 × depth). <code>$DEPTH</code> is the shell variable you set back in §5.3 (4 for this lab). See the scaling widget below for exactly what turning this up does to the model.',
     dbs:
       '<strong>--device-batch-size $DEVICE_BATCH_SIZE</strong> — how many sequences each GPU handles per forward/backward pass. This is the dial you lower if you hit CUDA out-of-memory (16 → 8 → 4 → 2). nanochat uses <em>gradient accumulation</em>, so a smaller device batch just runs more micro-steps to reach the same effective batch — slower, not worse. <code>$DEVICE_BATCH_SIZE</code> is also set in §5.3.',
     iters:
-      '<strong>--num-iterations 2000</strong> — how many optimizer steps to run. More iterations = more training = lower loss, up to a point — and the curve has mostly flattened by ~1,500 steps at this scale, so the lab stops at 2000 to save time. It finishes in ~15 minutes at depth 6 on one GPU. <em>This is the flag the lab template originally got wrong — older nanochat called it <code>--steps</code>.</em>',
+      '<strong>--num-iterations 2000</strong> — how many optimizer steps to run. More iterations = more training = lower loss, up to a point — and the curve has mostly flattened by ~1,500 steps at this scale, so the lab stops at 2000 to save time. It finishes in ~10 minutes at depth 4 on one GPU. <em>This is the flag the lab template originally got wrong — older nanochat called it <code>--steps</code>.</em>',
     tee:
       '<strong>2&gt;&amp;1 | tee train.log</strong> — shell plumbing, not nanochat. <code>2&gt;&amp;1</code> merges stderr into stdout so all output is one stream; <code>| tee train.log</code> forks that stream two ways — printing to your screen <em>and</em> writing a copy to <code>train.log</code>. You capture the per-step loss during the run you were going to do anyway, then plot it afterward (loss-curve step below) instead of training a second time.',
   };
