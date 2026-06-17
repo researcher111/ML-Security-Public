@@ -668,7 +668,7 @@ optimizer.step()</code></pre>
 
 <h3>6.4 (optional) Reinforcement learning</h3>
 <p>The timed lab stops after SFT — but if you have GPU time left, there's a fourth training phase. It uses <strong><span class="gloss" data-gloss="grpo">GRPO</span></strong> (Group Relative Policy Optimization) to push the SFT model toward preferred responses — the algorithm DeepSeek popularized, which needs no separate reward model. Output: <code>rl_model.pt</code>. Wall time: ~20 minutes at depth 4. <em>What you get:</em> noticeably better answers on reasoning tasks (GSM8K, ARC).</p>
-<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">python -m scripts.chat_rl --model data/sft_model.pt</span></pre>
+<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">python -m scripts.chat_rl</span></pre>
 <p>Skip it if your job time is running low; the chat model from §6.3 is enough for the assignment. While it runs, here's the core idea — sample, score, reinforce:</p>
 
 <div class="viz" id="viz-grpo">
