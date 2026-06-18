@@ -257,15 +257,19 @@ def output_filter(text):
     return ("I cannot provide that information."
             if any(s in text for s in SECRET_PATTERNS) else text)</code></pre>
 
-<div class="callout insight keep-in-present">
-  <span class="label">spot the blind spots</span>
-  <p>Both filters use Python's <code>in</code> — literal substring match. The credential list is fixed; the injection-keyword list is fixed. Take a moment before continuing: <strong>what kinds of inputs would slip past either filter without changing what they actually communicate?</strong> A few minutes of thinking here is the most useful preparation you can do for <a href="#attack-1">Attack 1</a> below.</p>
+<div class="callout tps">
+  <span class="label">Think · Pair · Share · spot the blind spots</span>
+  <ul class="tps-steps">
+    <li><span class="tps-phase">Think · 2 min</span>Both filters use Python's <code>in</code> — a literal substring match against a fixed credential list and a fixed injection-keyword list. On your own, write down what kinds of inputs would slip past either filter <em>without changing what they actually communicate</em>.</li>
+    <li><span class="tps-phase">Pair · 3 min</span>Compare lists with a partner. Did they name an evasion class you didn't — character spacing, encoding, paraphrase, translation?</li>
+    <li><span class="tps-phase">Share · 2 min</span>As a pair, pick the single evasion you think is most likely to work and say why, then watch for it in <a href="#attack-1">Attack 1</a> below.</li>
+  </ul>
 </div>
 
 <div class="exercise">
   <span class="exercise-q">Try it · input filter vs output filter</span>
   <p>The agent has <em>two</em> filters: one that runs on what the user sent <em>before</em> the LLM sees it, and one that runs on what the LLM produced <em>before</em> the user sees it. Name one attack each filter is meant to catch, and one specific limitation of each.</p>
-  <details><summary>Show answer</summary><div><strong>Input filter</strong> catches obvious jailbreak phrases that appear verbatim in the user's message. Its limitation lives in the word "verbatim" — anything that communicates the same intent without matching the exact string slips through.<br><br><strong>Output filter</strong> catches a known credential when it appears letter-for-letter in the LLM's response. Its limitation also lives in "letter-for-letter."<br><br>The deeper lesson: both filters are pattern-matchers operating on raw text. Anything that breaks the exact pattern wins. See if you can list two or three classes of input/output that would do that — <a href="#attack-1">Attack 1</a> turns one of them into a working extraction.</div></details>
+  <details><summary>Show answer</summary><div><strong>Input filter</strong> catches obvious jailbreak phrases that appear verbatim in the user's message. Its limitation lives in the word "verbatim" — anything that communicates the same intent without matching the exact string slips through.<br><br><strong>Output filter</strong> catches a known credential when it appears letter-for-letter in the LLM's response. Same weakness from the other side: reshape or encode the credential — space out the characters, ROT13 it, base64 it — and those exact bytes never appear, so the filter waves it through.<br><br>The deeper lesson: both filters are pattern-matchers operating on raw text. Anything that breaks the exact pattern wins. See if you can list two or three classes of input/output that would do that — <a href="#attack-1">Attack 1</a> turns one of them into a working extraction.</div></details>
 </div>
 
 <h3 id="scaling-tools">2.3 Three tools instead of one</h3>
