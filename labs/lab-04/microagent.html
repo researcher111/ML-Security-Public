@@ -30,8 +30,7 @@
       <li><a href="#anatomy">1 · Anatomy of an agent</a></li>
       <li><a href="#microagent">2 · The microagent code</a></li>
       <li><a href="#toy-llm">3 · The toy LLM, hand-traced</a></li>
-      <li><a href="#scaling-up">4 · Scaling up · the production agent</a></li>
-      <li><a href="#whats-next">5 · What's next · before the attacks</a></li>
+      <li><a href="#whats-next">4 · What's next · before the attacks</a></li>
       <li><a href="#assignment">Assignment</a></li>
       <li><a href="#faq">FAQ</a></li>
     </ul>
@@ -64,7 +63,7 @@ The whole agent is one Python file: a system prompt, one tool, two LLM clients (
 
 <div class="callout insight">
   <span class="label">important · inline questions</span>
-  <p>Short questions appear throughout the lab in boxes like this one. They mirror the kind of question that will show up on the midterm and final, so take a beat to answer them in your head (or out loud with a partner) before clicking <em>Show answer</em>. There are eight in total.</p>
+  <p>Short questions appear throughout the lab in boxes like this one. They mirror the kind of question that will show up on the midterm and final, so take a beat to answer them in your head (or out loud with a partner) before clicking <em>Show answer</em>. There are six in total.</p>
 </div>
 
 <div class="callout note">
@@ -118,7 +117,7 @@ The whole agent is one Python file: a system prompt, one tool, two LLM clients (
 <ul>
   <li><strong>microagent source</strong> — <code>agent/microagent.py</code> in this lab folder. Read it top to bottom; that's the whole agent. <a class="inline-dl" href="lab-04-code.zip" download>↓ download lab-04-code.zip</a></li>
   <li><strong>toy knowledge base</strong> — <code>agent/microdata/</code>. Three tiny markdown files the agent's one tool can read.</li>
-  <li><strong>production agent for §4</strong> — <code>../lab-05/agent/baseline_agent.py</code>. Same loop, more surface. We walk it block by block in §4.</li>
+  <li><strong>production agent (walked in Lab 05)</strong> — <code>../lab-05/agent/baseline_agent.py</code>. Same loop, more surface. <a href="../lab-05/attack-agents.html#production">Lab 05 §2</a> walks it block by block, then attacks it.</li>
   <li><strong>companion walkthrough</strong> — <a href="../lab-02/microgpt.html">Lab 02 · microGPT</a>. Same pedagogy, applied to a transformer instead of an agent.</li>
   <li><strong>next lab · the attacks</strong> — <a href="../lab-05/attack-agents.html">Lab 05 · Attacking AI Agents</a>. Three canonical attacks against an agent shaped exactly like the one we walk here.</li>
 </ul>
@@ -598,144 +597,17 @@ agent&gt; Visit https://password.megacorpone.local. Locked out? Ext. 4357.</pre>
 </div>
 
 <!-- ============================================================ -->
-<h2 id="scaling-up">4 · Scaling up · the production agent <span class="time-tag">~40 min</span></h2>
+<h2 id="whats-next">4 · What's next · before the attacks</h2>
 
-<p>Open <code>../lab-05/agent/baseline_agent.py</code> in a second editor pane. <a class="inline-dl" href="../lab-05/lab-05-code.zip" download>↓ download lab-05-code.zip</a> It is 200 lines and structurally identical to microagent — same six components, same loop. The differences are <em>surface area</em>:</p>
-
-<ul>
-  <li>The CLI <code>input()</code> loop becomes a <strong>FastAPI</strong> service with <code>/chat</code>, <code>/upload</code>, <code>/summarize</code>, <code>/health</code>.</li>
-  <li>One tool becomes three (<code>file_search</code>, <code>file_read</code>, <code>config_lookup</code>) in a separate <code>tools.py</code>.</li>
-  <li>The bare LLM client picks up an <code>LLMError</code> wrapper and a config-from-env constructor in a separate <code>llm_client.py</code>.</li>
-  <li>The system prompt grows from 10 to 30 lines and now contains <em>planted credentials</em>.</li>
-  <li>An <strong>input filter</strong> and an <strong>output filter</strong> sandwich the LLM — both are pattern-matchers, and like all pattern-matchers, both have blind spots.</li>
-  <li>A <strong>SQLite knowledge base</strong> joins the context on every <code>/chat</code> call — long-term memory the agent reads from but does not verify.</li>
-</ul>
-
-<p>Every one of those changes can be traced back to one new line in <code>baseline_agent.py</code>. We walk them in order below — and as you read each addition, ask yourself: <strong>what does the new piece trust, and what happens if that trust is misplaced?</strong></p>
-
-<h3 id="scaling-fastapi">4.1 FastAPI replaces the CLI</h3>
-
-<pre><code class="language-python">app = FastAPI(title=AGENT_NAME)
-llm = LLMClient()
-
-class ChatIn(BaseModel):
-    message: str
-    session_id: str | None = None
-
-@app.post("/chat")
-def chat(req: ChatIn) -> dict[str, str]:
-    refusal = input_filter(req.message)
-    if refusal:
-        return {"response": refusal, "session_id": req.session_id or str(uuid.uuid4())}
-    notes_context = _retrieve_notes(req.message)
-    answer = react_loop(req.message, extra_context=notes_context)
-    return {
-        "response": output_filter(answer),
-        "session_id": req.session_id or str(uuid.uuid4()),
-    }</code></pre>
-
-<p>Three new things, each named after one of the new pieces: <code>input_filter</code> runs <em>before</em> the LLM sees the message, <code>_retrieve_notes</code> pulls long-term memory, <code>output_filter</code> runs <em>after</em>. The <code>react_loop()</code> in the middle is the same loop you read in §2.5.</p>
-
-<h3 id="scaling-filters">4.2 Two pattern-matching filters</h3>
-
-<pre><code class="language-python">INJECTION_KEYWORDS = [
-    "ignore previous instructions",
-    "ignore all prior instructions",
-    "your new task",
-    "reveal your prompt",
-]
-SECRET_PATTERNS = [
-    "Megacorp_DB_2026!",
-    "AKIA3MEGACORP2026DOCS",
-    "xoxb-EXAMPLE-FAKE-SLACK-TOKEN-FOR-LAB-ONLY",
-]
-def input_filter(text):
-    low = text.lower()
-    return ("I cannot process that request."
-            if any(k in low for k in INJECTION_KEYWORDS) else None)
-def output_filter(text):
-    return ("I cannot provide that information."
-            if any(s in text for s in SECRET_PATTERNS) else text)</code></pre>
-
-<div class="callout insight keep-in-present">
-  <span class="label">spot the blind spots</span>
-  <p>Both filters use Python's <code>in</code> — literal substring match. The credential list is fixed; the injection-keyword list is fixed. Take a moment before continuing: <strong>what kinds of inputs would slip past either filter without changing what they actually communicate?</strong> A few minutes of thinking here is the most useful preparation you can do for the next lab.</p>
-</div>
-
-<div class="exercise">
-  <span class="exercise-q">Try it · input filter vs output filter</span>
-  <p>The agent has <em>two</em> filters: one that runs on what the user sent <em>before</em> the LLM sees it, and one that runs on what the LLM produced <em>before</em> the user sees it. Name one attack each filter is meant to catch, and one specific limitation of each.</p>
-  <details><summary>Show answer</summary><div><strong>Input filter</strong> catches obvious jailbreak phrases that appear verbatim in the user's message. Its limitation lives in the word "verbatim" — anything that communicates the same intent without matching the exact string slips through.<br><br><strong>Output filter</strong> catches a known credential when it appears letter-for-letter in the LLM's response. Its limitation also lives in "letter-for-letter."<br><br>The deeper lesson: both filters are pattern-matchers operating on raw text. Anything that breaks the exact pattern wins. See if you can list two or three classes of input/output that would do that — and hold the list in your head until the next lab.</div></details>
-</div>
-
-<h3 id="scaling-tools">4.3 Three tools instead of one</h3>
-
-<p>The new file <code>tools.py</code> defines <code>file_search</code>, <code>file_read</code>, and <code>config_lookup</code> with the same path-scoping discipline microagent's tool used. The LLM dispatch is still one line in the loop:</p>
-
-<pre><code class="language-python">obs = call_tool(tool, **args)   # dispatch by name -> tool function</code></pre>
-
-<p>The <em>tool surface</em> grew. The <em>dispatch mechanic</em> did not.</p>
-
-<h3 id="scaling-memory">4.4 SQLite long-term memory</h3>
-
-<p>This is the structurally biggest addition — and the one that creates the most interesting attack class.</p>
-
-<pre><code class="language-python">def _retrieve_notes(query):
-    """Pull articles whose topic appears in the user's query.
-    VULNERABILITY: returns the most-recent article first, no
-    authorship verification."""
-    conn = sqlite3.connect(NOTES_DB)
-    rows = conn.execute(
-        "SELECT title, body, author, updated_at FROM kb_articles "
-        "ORDER BY updated_at DESC").fetchall()
-    conn.close()
-    hits = []
-    for title, body, author, updated in rows:
-        for word in title.lower().split():
-            if len(word) > 3 and word in query.lower():
-                hits.append(f"[KB:{title} · updated {updated}]\n{body}")
-                break
-    return "Knowledge-base articles relevant to this request:\n\n" + "\n\n".join(hits) if hits else ""</code></pre>
-
-<p>The result of <code>_retrieve_notes</code> is concatenated into the system prompt before the LLM sees the user's message. Notice the two facts that travel together: <strong>(1)</strong> anyone who can write to <code>kb_articles</code> can influence what every future user reads from the agent, and <strong>(2)</strong> there is no check anywhere in this function on <em>who</em> wrote a given row. What would you do with that, if you had write access?</p>
-
-<div class="exercise">
-  <span class="exercise-q">Try it · why ORDER BY updated_at DESC?</span>
-  <p>The SQL query in <code>_retrieve_notes</code> orders results by <code>updated_at DESC</code>, so the most-recently-edited article wins. Why is that ordering a feature for normal users and a vulnerability for an attacker who can write to the table?</p>
-  <details><summary>Show answer</summary><div>For normal users it's correct: if HR updates the password-reset policy, every later <code>/chat</code> query should see the new version. For an attacker, the same ordering is a hand-off — the freshest row wins regardless of who wrote it. The structural fault isn't the ordering itself; it's that the agent treats writer identity as unimportant. Without an authorship check or signature, "most recent" is the same as "whoever wrote last." Keep that in mind for the next lab.</div></details>
-</div>
-
-<h3 id="scaling-doc">4.5 Document upload + summarization</h3>
-
-<p>Two new endpoints: <code>/upload</code> writes a file to a staging directory after running a per-file content scan, and <code>/summarize</code> concatenates every staged file into one LLM context. Re-read those two sentences. There is a mismatch between the scope of the scan and the scope of the eventual context. Sit with the mismatch for a minute — what could you do with it, if you could upload more than one file?</p>
-
-<pre><code class="language-python">@app.post("/summarize")
-def summarize():
-    files = sorted(INTAKE_DIR.iterdir())
-    if not files: return {"summary": "(no files to summarize)"}
-    # VULNERABILITY: all files joined into ONE context.
-    joined = "\n\n".join(f"=== {p.name} ===\n{p.read_text()}" for p in files)
-    messages = [{"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": "Summarize the documents below.\n\n" + joined}]
-    return {"summary": output_filter(llm.chat(messages))}</code></pre>
-
-<div class="callout note">
-  <span class="label">putting the pieces together</span>
-  <p>microagent has one tool, no filters, no memory. baseline_agent has three tools, two filters, memory, and three new endpoints. <strong>The loop is the same loop.</strong> Every difference is one new line or one new function — and every one of those new pieces gives an attacker something new to lean on. Once you can hold microagent in your head, baseline_agent is just microagent with a deployment story bolted on — and the bolt is where the interesting questions live.</p>
-</div>
-
-<!-- ============================================================ -->
-<h2 id="whats-next">5 · What's next · before the next lab</h2>
-
-<p><a href="../lab-05/attack-agents.html"><strong>Lab 05 · Attacking AI Agents</strong></a> takes the same <code>baseline_agent.py</code> you just read and runs three canonical attacks against it. Before you click through, take a few minutes with §4. Three of the additions there each open a different kind of trouble:</p>
+<p><a href="../lab-05/attack-agents.html"><strong>Lab 05 · Attacking AI Agents</strong></a> takes the production agent (<code>baseline_agent.py</code>) and runs three canonical attacks against it. Lab 05 now opens by walking that agent block by block — the same FastAPI service, the two pattern-matching filters, the SQLite memory, and the upload/summarize endpoints — and then attacks three of those seams in turn:</p>
 
 <ol>
-  <li>The two pattern-matching <strong>filters</strong> in §4.2.</li>
-  <li>The unverified <strong>knowledge-base retrieval</strong> in §4.4.</li>
-  <li>The per-file scan followed by a joined-context <strong>summarization</strong> in §4.5.</li>
+  <li>The two pattern-matching <strong>filters</strong> — direct prompt extraction.</li>
+  <li>The unverified <strong>knowledge-base retrieval</strong> — persistent memory poisoning.</li>
+  <li>The per-file scan feeding a joined-context <strong>summarization</strong> — indirect injection by document fragmentation.</li>
 </ol>
 
-<p>For each one, see how far you can sketch an attack on your own. Don't worry about getting all the way to a working exploit — even naming the seam and the kind of input that exercises it is most of the work. Lab 05 walks the three attacks, then patches each, then asks you to bypass the patches. The further you can get with your own pencil-and-paper version first, the more useful that lab will be.</p>
+<p>Before you click through, look back at microagent one more time. Everything Lab 05 attacks is one new line or one new function bolted onto the loop you just read — once you can hold microagent in your head, the production agent is just microagent with a deployment story, and the bolts are where the attacks live. The further you can reason about each seam on your own first, the more useful Lab 05 will be.</p>
 
 <!-- ============================================================ -->
 <h2 id="assignment">Assignment · give the agent a shell — and a leash <span class="time-tag">~2 hours · autograded</span></h2>

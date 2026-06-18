@@ -281,6 +281,30 @@ aside.toc .toc-foot { margin-top: 14px; padding-top: 10px; border-top: 1px solid
 .callout p { margin-bottom: 8px; font-size: 15px; }
 .callout p:last-child { margin-bottom: 0; }
 
+/* Think · Pair · Share — peer-engagement callout */
+.callout.tps {
+  background: #f0f8f2;
+  border-left: 3px solid #4a9d6a;
+}
+.tps-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 7px;
+}
+.tps-steps li { font-size: 15px; }
+.tps-steps .tps-phase {
+  display: inline-block;
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #2f7a4d;
+  margin-right: 8px;
+}
+
 /* Exercise blocks (collapsible answer pattern) */
 .exercise {
   margin: 18px 0;
