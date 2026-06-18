@@ -62,7 +62,7 @@ An <span class="gloss" data-gloss="agent">agent</span> reads your message, decid
 </p>
 
 <div class="cite">
-  reference module: <a href="https://www.offsec.com/courses/ai-300/">OffSec AI-300 · Advanced AI Red Teaming</a> · threat taxonomy: <a href="https://atlas.mitre.org/">MITRE ATLAS</a> (T0051 prompt injection, T0020 data poisoning) · agent runtime: <a href="https://www.rc.virginia.edu/userinfo/rcgenai-userguide/">UVA RC GenAI userguide</a> · model: <code>moonshotai/kimi-k2-instruct</code> on Rivanna.
+  threat taxonomy: <a href="https://atlas.mitre.org/">MITRE ATLAS</a> (T0051 prompt injection, T0020 data poisoning) · agent runtime: <a href="https://open-webui.rc.virginia.edu/">UVA RC GenAI portal</a> · model: <code>moonshotai/kimi-k2-instruct</code> on Rivanna.
 </div>
 
 <div class="code-download">
@@ -99,8 +99,7 @@ An <span class="gloss" data-gloss="agent">agent</span> reads your message, decid
   <li><strong>Agent source</strong> — <code>agent/baseline_agent.py</code> in this lab folder. ~200 lines of FastAPI, three tools, one manual ReAct loop, three deliberate vulnerabilities.</li>
   <li><strong>Attack scripts</strong> — <code>attacks/01_prompt_extraction.py</code>, <code>02_indirect_injection.py</code>, <code>03_memory_poisoning.py</code>. Each is a runnable narrative: prints what it's trying, sends the request, evaluates the response, exits non-zero on attack failure.</li>
   <li><strong>Hardened agent</strong> — <code>agent/secure_agent.py</code>. Same surface, three documented defenses. Run the attacks against this one in §7 and watch them fail.</li>
-  <li><strong>Rivanna GenAI service</strong> — <a href="https://www.rc.virginia.edu/userinfo/rcgenai-userguide/">rc.virginia.edu/userinfo/rcgenai-userguide</a>. Copy the endpoint, key, and model name from the userguide into <code>agent/.env</code>.</li>
-  <li><strong>OffSec AI-300 § 3</strong> — the OffSec module this lab is modeled after. Their version uses Qwen on a cyber-range Kali; ours uses Kimi K2 on Rivanna. The vulnerabilities and the defenses are identical.</li>
+  <li><strong>Rivanna GenAI service</strong> — the <a href="https://open-webui.rc.virginia.edu/">RC GenAI portal</a>. Grab the base URL, API key, and model name as in <a href="../lab-04/microagent.html#microagent-real">Lab 04 §2.4</a> and put them in <code>agent/.env</code>.</li>
   <li><strong>MITRE ATLAS</strong> — <a href="https://atlas.mitre.org/">atlas.mitre.org</a>. Threat taxonomy used by every vendor in this space. Attack 1 is AML.T0051.000, Attack 2 is AML.T0051.001, Attack 3 is AML.T0020.</li>
 </ul>
 
@@ -125,17 +124,70 @@ An <span class="gloss" data-gloss="agent">agent</span> reads your message, decid
 
 <p>Our agent uses the <span class="gloss" data-gloss="react">ReAct</span> pattern — <em>Reason + Act</em>. The LLM doesn't reply directly; instead it emits a structured action, the runtime executes that action, feeds the observation back as more tokens, and asks the LLM what to do next. The loop continues until the LLM emits a <code>final</code> action.</p>
 
-<pre><code class="language-python">User Message --> LLM Thinks --> Chooses Action --> Executes Tool
-     ^                                                 |
-     +------------ Observation fed back ---------------+
-                       ...repeats...
-                 --> Final Answer --> Output Filter --> Response</code></pre>
+<div class="reactflow" id="reactflow">
+  <svg viewBox="0 0 860 285" role="img" aria-label="Interactive ReAct loop diagram">
+    <defs>
+      <marker id="rf-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#b8b2a4"/>
+      </marker>
+    </defs>
 
-<p>Every arrow in that diagram is a token stream the LLM reads. The <em>User Message</em> arrow is direct prompt injection. The <em>Observation fed back</em> arrow is indirect prompt injection. The <em>Final Answer</em> arrow is where output filters live — and where character-spacing bypass beats them. Click each step in the widget above to see how each attack maps to each arrow.</p>
+    <!-- connector arrows -->
+    <path class="rf-conn" d="M170,104 L234,104" marker-end="url(#rf-arrow)"/>
+    <path class="rf-conn" d="M400,104 L464,104" marker-end="url(#rf-arrow)"/>
+    <path class="rf-conn" d="M620,104 L684,104" marker-end="url(#rf-arrow)"/>
+    <path class="rf-conn" d="M320,132 L320,206" marker-end="url(#rf-arrow)"/>
+    <text class="rf-edgelabel" x="332" y="175">when done</text>
+    <path class="rf-conn" d="M400,238 L464,238" marker-end="url(#rf-arrow)"/>
+    <path class="rf-conn" d="M620,238 L686,238" marker-end="url(#rf-arrow)"/>
+
+    <!-- feedback loop (clickable) -->
+    <g class="rf-item rf-attack" data-key="observe" tabindex="0" role="button" aria-label="Observation fed back">
+      <path class="rf-edge" d="M770,78 L770,34 L320,34 L320,75" marker-end="url(#rf-arrow)"/>
+      <path class="rf-hit" d="M770,78 L770,34 L320,34 L320,75"/>
+      <text class="rf-edgelabel rf-attack-label" x="545" y="26" text-anchor="middle">Observation fed back · loops until done</text>
+    </g>
+
+    <!-- top row nodes -->
+    <g class="rf-item rf-attack" data-key="input" tabindex="0" role="button">
+      <rect class="rf-box" x="10" y="78" width="160" height="52" rx="7"/>
+      <text class="rf-label" x="90" y="108" text-anchor="middle">User message</text>
+    </g>
+    <g class="rf-item" data-key="reason" tabindex="0" role="button">
+      <rect class="rf-box" x="240" y="78" width="160" height="52" rx="7"/>
+      <text class="rf-label" x="320" y="108" text-anchor="middle">LLM thinks</text>
+    </g>
+    <g class="rf-item" data-key="act" tabindex="0" role="button">
+      <rect class="rf-box" x="470" y="78" width="160" height="52" rx="7"/>
+      <text class="rf-label" x="550" y="108" text-anchor="middle">Chooses action</text>
+    </g>
+    <g class="rf-item" data-key="tool" tabindex="0" role="button">
+      <rect class="rf-box" x="690" y="78" width="160" height="52" rx="7"/>
+      <text class="rf-label" x="770" y="108" text-anchor="middle">Executes tool</text>
+    </g>
+
+    <!-- exit row nodes -->
+    <g class="rf-item" data-key="final" tabindex="0" role="button">
+      <rect class="rf-box" x="240" y="212" width="160" height="52" rx="7"/>
+      <text class="rf-label" x="320" y="242" text-anchor="middle">Final answer</text>
+    </g>
+    <g class="rf-item rf-attack" data-key="filter" tabindex="0" role="button">
+      <rect class="rf-box" x="470" y="212" width="160" height="52" rx="7"/>
+      <text class="rf-label" x="550" y="242" text-anchor="middle">Output filter</text>
+    </g>
+    <g class="rf-item" data-key="response" tabindex="0" role="button">
+      <rect class="rf-box" x="690" y="212" width="160" height="52" rx="7"/>
+      <text class="rf-label" x="770" y="242" text-anchor="middle">Response</text>
+    </g>
+  </svg>
+  <div class="react-detail" id="reactflow-detail"></div>
+</div>
+
+<p>Every arrow in that diagram is a token stream the LLM reads — and the three accented boxes are the three injection points this lab attacks. <strong>Click any box, or the looping arrow,</strong> to see what the LLM is processing there and which attack targets it: the <em>User message</em> is direct prompt injection (Attack 1), the <em>Observation fed back</em> is indirect injection (Attack 2), and the <em>Output filter</em> is where character-spacing bypass beats a literal-substring scan (Attack 1, stage B).</p>
 
 <h3 id="attack-surface">1.2 The five-step methodology</h3>
 
-<p>Every attack in this lab follows the same five-step cycle, adapted from OffSec's <em>enumerate-attack-detect-evade</em> methodology:</p>
+<p>Every attack in this lab follows the same five-step <em>enumerate-attack-detect-evade</em> cycle:</p>
 
 <ol>
   <li><strong>Enumerate.</strong> Discover the agent's endpoints, get it to describe its tools and capabilities, probe for refusals (a refusal confirms the content exists).</li>
@@ -276,16 +328,20 @@ def summarize():
 <h2 id="setup">3 · Stand up the baseline agent <span class="time-tag">~15 min</span></h2>
 
 <h3>3.1 Get your Rivanna GenAI credentials</h3>
-<p>The agent's LLM core runs on the UVA Research Computing GenAI service. Open <a href="https://www.rc.virginia.edu/userinfo/rcgenai-userguide/">the userguide</a> and copy three values:</p>
+<p>The agent's LLM core runs on the UVA Research Computing GenAI service — the same one you set up in <a href="../lab-04/microagent.html#microagent-real">Lab 04 §2.4 · The real LLM</a>. If you still have that <code>agent/.env</code>, reuse the same three values; otherwise follow that section to generate them from the <a href="https://open-webui.rc.virginia.edu/">RC GenAI portal</a> (<strong>Settings → Account → API keys</strong>):</p>
 <ul>
-  <li>The OpenAI-compatible <strong>base URL</strong></li>
-  <li>Your <strong>API token</strong></li>
-  <li>The exact <strong>model string</strong> for Kimi K2 (or whichever model the userguide lists for this lab)</li>
+  <li><code>LLM_BASE_URL</code> — the OpenAI-compatible <strong>base URL</strong></li>
+  <li><code>LLM_API_KEY</code> — your personal <strong>API token</strong></li>
+  <li><code>LLM_MODEL</code> — the <strong>model string</strong> for Kimi K2</li>
 </ul>
 
-<h3>3.2 Install and configure</h3>
-<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">cd Class/labs/lab-05</span>
-<span class="term-comment">$</span> <span class="term-cmd">python3 -m venv .venv && source .venv/bin/activate</span>
+<h3>3.2 Get the code, install, and configure</h3>
+<p>In your Rivanna interactive session's terminal, pull the code bundle with <code>curl</code> and unpack it:</p>
+<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">mkdir -p ~/Class/labs/lab-05 && cd ~/Class/labs/lab-05</span>
+<span class="term-comment">$</span> <span class="term-cmd">curl -sLO https://researcher111.github.io/ML-Security-Public/labs/lab-05/lab-05-code.zip</span>
+<span class="term-comment">$</span> <span class="term-cmd">unzip -o lab-05-code.zip</span>     <span class="term-comment"># or: python3 -m zipfile -e lab-05-code.zip .</span></pre>
+<p>Then set up the virtual environment and your credentials:</p>
+<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">python3 -m venv .venv && source .venv/bin/activate</span>
 <span class="term-comment">$</span> <span class="term-cmd">pip install -r agent/requirements.txt</span>
 <span class="term-comment">$</span> <span class="term-cmd">cp agent/.env.example agent/.env</span>
 <span class="term-comment">$</span> <span class="term-cmd">$EDITOR agent/.env</span>     <span class="term-comment"># fill in the three Rivanna values</span></pre>
@@ -306,7 +362,7 @@ INFO:     Uvicorn running on http://127.0.0.1:8001</pre>
   -H "Content-Type: application/json" \
   -d '{"message": "What can you help me with?"}' | python3 -m json.tool</span></pre>
 
-<p>You should see a helpful IT-assistant intro mentioning password resets, network troubleshooting, and software installation. <strong>If you see an LLM error</strong>, the most common cause is that <code>LLM_BASE_URL</code> / <code>LLM_API_KEY</code> / <code>LLM_MODEL</code> are not set in <code>agent/.env</code> — re-check the userguide and try again.</p>
+<p>You should see a helpful IT-assistant intro mentioning password resets, network troubleshooting, and software installation. <strong>If you see an LLM error</strong>, the most common cause is that <code>LLM_BASE_URL</code> / <code>LLM_API_KEY</code> / <code>LLM_MODEL</code> are not set in <code>agent/.env</code> — re-check the three values against <a href="../lab-04/microagent.html#microagent-real">Lab 04 §2.4</a> and try again.</p>
 
 <!-- ============================================================ -->
 <h2 id="attack-1">4 · Attack 1 · Prompt extraction + filter bypass <span class="time-tag">~30 min</span></h2>
@@ -681,8 +737,8 @@ The previous portal at password.megacorpone.local has been decommissioned.
 <h3>What's the relationship to Lab 10 (Agentic pentesting)?</h3>
 <p>Lab 10 uses Claude Code <em>as</em> the agent doing the pentest. Lab 05 attacks an agent like the kind a target organization would deploy (the one you read in <a href="../lab-04/microagent.html">Lab 04</a>). Together they cover both sides of the agentic-security stack.</p>
 
-<h3>The OffSec module also covers code-review and session-enumeration attacks. Why aren't those here?</h3>
-<p>Time. The full OffSec syllabus runs 65 hours; we have 3 in class. The trio in this lab covers the most architecturally-distinct attack surfaces (direct, indirect, memory). The code-review attack is a variant of indirect injection; the session-enumeration attack is a variant of memory access. Both are good capstone-assignment extensions.</p>
+<h3>Why only these three attacks? What about code-review and session-enumeration attacks?</h3>
+<p>Time. There are many more agent attack classes; we have 3 hours in class. The trio in this lab covers the most architecturally-distinct attack surfaces (direct, indirect, memory). A code-review attack is a variant of indirect injection; a session-enumeration attack is a variant of memory access. Both are good capstone-assignment extensions.</p>
 
 <footer style="margin-top: 80px; padding-top: 20px; border-top: 1px solid var(--rule); color: var(--ink-mute); font-size: 13px;">
 DS 6042 · Lab 05 · Attacking AI Agents · 2026

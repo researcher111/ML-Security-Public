@@ -2,13 +2,13 @@
 
 Configure with environment variables:
 
-    LLM_BASE_URL   e.g. https://api.research-computing.virginia.edu/v1
-    LLM_API_KEY    your Rivanna GenAI token (see RC GenAI userguide)
+    LLM_BASE_URL   e.g. https://open-webui.rc.virginia.edu/api
+    LLM_API_KEY    your Rivanna GenAI token (RC GenAI portal -> Settings -> Account -> API keys)
     LLM_MODEL      e.g. moonshotai/kimi-k2-instruct
 
 If you are running against the Rivanna GenAI service, copy the
-endpoint URL, key, and exact model string from the userguide:
-https://www.rc.virginia.edu/userinfo/rcgenai-userguide/
+endpoint URL, key, and exact model string from the RC GenAI portal:
+https://open-webui.rc.virginia.edu/
 
 For a quick local fallback (no Rivanna), point LLM_BASE_URL at any
 local OpenAI-compatible server such as `vllm`, `text-generation-webui`,

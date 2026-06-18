@@ -3,6 +3,7 @@
  *
  * Widgets:
  *   1. #viz-react      — clickable ReAct loop steps
+ *   1b. #reactflow     — interactive ReAct flow diagram (nodes + feedback edge)
  *   2. #viz-charspace  — character-spacing bypass demo
  *   3. #viz-fragment   — document fragmentation merge animation
  *   4. #viz-poison     — memory-poisoning timeline
@@ -74,6 +75,47 @@
         '<div class="react-detail-row"><strong>Tokens</strong>' + s.tokens + '</div>' +
         '<div class="react-detail-row"><strong>Injection vector</strong>' + s.injection + '</div>';
     }
+    render();
+  })();
+
+  // ============================================================
+  // Widget 1b · Interactive ReAct flow diagram
+  // ============================================================
+  (function initReactFlow() {
+    const root = document.getElementById('reactflow');
+    if (!root) return;
+    const detail = document.getElementById('reactflow-detail');
+    const items = Array.from(root.querySelectorAll('[data-key]'));
+
+    const FLOW = {
+      input:    { role: 'input',     name: 'User message',         note: 'Arrives at <code>/chat</code> and becomes "user"-role tokens, sitting right next to the system prompt with no trust boundary between them.', vector: 'Direct prompt injection · Attack 1' },
+      reason:   { role: 'reason',    name: 'LLM thinks',           note: 'Reads the system prompt, the conversation history, and every prior observation, then emits one JSON action.', vector: 'Inherits any injection that reached its context' },
+      act:      { role: 'decide',    name: 'Chooses action',       note: 'The action JSON names a tool and arguments — or signals <code>{"action":"final"}</code> to stop the loop.', vector: '' },
+      tool:     { role: 'act',       name: 'Executes tool',        note: 'The runtime dispatches to <code>file_search</code> / <code>file_read</code> / <code>config_lookup</code> and captures the output.', vector: 'Tool poisoning if a tool pulls attacker-controlled content' },
+      observe:  { role: 'loop',      name: 'Observation fed back', note: 'Tool output is appended as another "user" message and the loop repeats. The LLM cannot tell tool output from a real user request.', vector: 'Indirect prompt injection · Attack 2' },
+      final:    { role: 'exit',      name: 'Final answer',         note: 'When the LLM emits <code>{"action":"final"}</code> the loop ends and the answer heads for the filter.', vector: '' },
+      filter:   { role: 'guardrail', name: 'Output filter',        note: 'Scans the answer for known credentials by literal substring before it reaches the user.', vector: 'Output-filter bypass · Attack 1 (character spacing)' },
+      response: { role: 'output',    name: 'Response',             note: 'Returned to the employee once the filter passes.', vector: '' },
+    };
+
+    let active = 'input';
+    function render() {
+      items.forEach(el => el.classList.toggle('rf-active', el.dataset.key === active));
+      const f = FLOW[active];
+      detail.innerHTML =
+        '<div class="react-detail-title">' + f.role + '</div>' +
+        '<div class="react-detail-name">' + f.name + '</div>' +
+        '<div class="react-detail-row"><strong>What happens</strong>' + f.note + '</div>' +
+        (f.vector
+          ? '<div class="react-detail-row rf-vector"><strong>Attack surface</strong>' + f.vector + '</div>'
+          : '<div class="react-detail-row"><strong>Attack surface</strong>none — not directly attacker-reachable</div>');
+    }
+    items.forEach(el => {
+      el.addEventListener('click', () => { active = el.dataset.key; render(); });
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); active = el.dataset.key; render(); }
+      });
+    });
     render();
   })();
 
@@ -324,7 +366,7 @@ summary template included in the template guide.`,
         title: 'agent',
         body:
           '<p>An LLM-driven program that <em>chooses its own next action</em>. Where a chatbot returns the LLM\'s reply directly, an agent treats the LLM\'s reply as a structured plan — call this tool, then call that tool, then return a final answer. The runtime executes those plans and feeds the results back into the next LLM call.</p>' +
-          '<p>The OffSec AI-300 module phrases it cleanly: "An agent receives your message, reasons about what to do, decides which tools to call, executes those tools, observes the results, and then either takes another action or responds." That is the entire deal. Every framework — LangChain, LlamaIndex, AutoGen, OpenAI Assistants, Anthropic\'s computer_use — implements some variant of this loop.</p>',
+          '<p>Put plainly: an agent receives your message, reasons about what to do, decides which tools to call, executes those tools, observes the results, and then either takes another action or responds. That is the entire deal. Every framework — LangChain, LlamaIndex, AutoGen, OpenAI Assistants, Anthropic\'s computer_use — implements some variant of this loop.</p>',
       },
       'react': {
         title: 'ReAct · Reason + Act',

@@ -609,6 +609,35 @@ agent&gt; Visit https://password.megacorpone.local. Locked out? Ext. 4357.</pre>
 
 <p>Before you click through, look back at microagent one more time. Everything Lab 05 attacks is one new line or one new function bolted onto the loop you just read — once you can hold microagent in your head, the production agent is just microagent with a deployment story, and the bolts are where the attacks live. The further you can reason about each seam on your own first, the more useful Lab 05 will be.</p>
 
+<p>Here is a taste of the three seams, straight from <code>baseline_agent.py</code> — read each one and ask yourself <em>"what does this trust, and what happens if that trust is misplaced?"</em></p>
+
+<p><strong>1 · The deployment shell.</strong> The CLI <code>input()</code> loop becomes a FastAPI <code>/chat</code> endpoint. It is the same <code>react_loop()</code> you just read, now sandwiched between an input filter, a memory read, and an output filter:</p>
+<pre><code class="language-python">@app.post("/chat")
+def chat(req: ChatIn) -> dict[str, str]:
+    refusal = input_filter(req.message)               # runs BEFORE the LLM
+    if refusal:
+        return {"response": refusal, ...}
+    notes = _retrieve_notes(req.message)              # long-term memory
+    answer = react_loop(req.message, extra_context=notes)
+    return {"response": output_filter(answer), ...}   # runs AFTER the LLM</code></pre>
+
+<p><strong>2 · Two pattern-matching filters.</strong> Both compare against fixed strings with Python's <code>in</code>. Anything that <em>means</em> the same thing without matching the literal string sails past — that is Attack 1 (prompt extraction).</p>
+<pre><code class="language-python">def input_filter(text):
+    low = text.lower()
+    return ("I cannot process that request."
+            if any(k in low for k in INJECTION_KEYWORDS) else None)
+def output_filter(text):
+    return ("I cannot provide that information."
+            if any(s in text for s in SECRET_PATTERNS) else text)</code></pre>
+
+<p><strong>3 · Unverified long-term memory.</strong> Retrieval sorts by recency and never checks <em>who</em> wrote the row. Whoever writes last owns the agent's next answer on that topic — that is Attack 3 (memory poisoning).</p>
+<pre><code class="language-python">rows = conn.execute(
+    "SELECT title, body, author, updated_at FROM kb_articles "
+    "ORDER BY updated_at DESC"        # freshest wins, author never checked
+).fetchall()</code></pre>
+
+<p>That is the whole game: more surface, same loop. Lab 05 walks all of it in detail — including the <code>/upload</code> + <code>/summarize</code> document path behind Attack 2 — then attacks each seam and patches it.</p>
+
 <!-- ============================================================ -->
 <h2 id="assignment">Assignment · give the agent a shell — and a leash <span class="time-tag">~2 hours · autograded</span></h2>
 

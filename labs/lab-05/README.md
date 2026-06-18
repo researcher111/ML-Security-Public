@@ -62,7 +62,6 @@ Open `attack-agents.html` directly — no server needed.
 
 ## Reference
 
-- OffSec AI-300 §3 (the canonical academic version of this content)
 - MITRE ATLAS — <https://atlas.mitre.org/>
 - OWASP LLM Top-10 — <https://owasp.org/www-project-top-10-for-large-language-model-applications/>
-- UVA RC GenAI userguide — <https://www.rc.virginia.edu/userinfo/rcgenai-userguide/>
+- UVA RC GenAI portal — <https://open-webui.rc.virginia.edu/>

@@ -124,6 +124,31 @@ pre.term-snippet .term-hl      { background: rgba(177,74,46,0.28); color: #ffd8c
   color: var(--accent); margin-right: 6px;
 }
 
+/* Interactive ReAct flow diagram (#reactflow) */
+.reactflow { margin: 16px 0; }
+.reactflow svg { width: 100%; height: auto; display: block; overflow: visible; }
+.rf-item { cursor: pointer; }
+.rf-box {
+  fill: #faf8f2; stroke: #d8d3c5; stroke-width: 1.5;
+  transition: fill 180ms, stroke 180ms, stroke-width 180ms;
+}
+.rf-item:hover .rf-box { fill: #f4eee0; }
+.rf-item.rf-attack .rf-box { stroke: var(--accent-soft); stroke-width: 2; }
+.rf-item.rf-active .rf-box { fill: #fde0d2; stroke: var(--accent); stroke-width: 2.5; }
+.rf-label { font-family: var(--sans); font-size: 13px; font-weight: 700; fill: var(--ink); }
+.rf-conn { fill: none; stroke: #b8b2a4; stroke-width: 2; }
+.rf-edge { fill: none; stroke: #b8b2a4; stroke-width: 2; transition: stroke 180ms, stroke-width 180ms; }
+.rf-item.rf-attack .rf-edge { stroke: var(--accent-soft); }
+.rf-item:hover .rf-edge { stroke: var(--accent); }
+.rf-item.rf-active .rf-edge { stroke: var(--accent); stroke-width: 3; }
+.rf-hit { fill: none; stroke: transparent; stroke-width: 18; }
+.rf-edgelabel { font-family: var(--sans); font-size: 11px; fill: var(--ink-mute); }
+.rf-attack-label { fill: var(--accent); font-weight: 700; }
+.rf-item:focus { outline: none; }
+.rf-item:focus .rf-box { stroke: var(--accent); }
+.react-detail-row.rf-vector strong { color: var(--accent); }
+.reactflow .react-detail { margin-top: 12px; }
+
 /* ============================================================
    Widget · character spacing (#viz-charspace)
    ============================================================ */
