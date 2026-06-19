@@ -304,6 +304,35 @@ aside.toc .toc-foot { margin-top: 14px; padding-top: 10px; border-top: 1px solid
   color: #2f7a4d;
   margin-right: 8px;
 }
+/* Gate Pair & Share behind a button so they don't leak the Think answer */
+.tps-reveal { margin-top: 10px; }
+.tps-reveal > summary {
+  cursor: pointer;
+  display: inline-block;
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 700;
+  color: #2f7a4d;
+  background: #e3f1e8;
+  border: 1px solid #b6d8c2;
+  border-radius: 5px;
+  padding: 5px 11px;
+  list-style: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.tps-reveal > summary::-webkit-details-marker { display: none; }
+.tps-reveal > summary::marker { content: ""; }
+.tps-reveal[open] > summary {
+  color: var(--ink-mute);
+  background: transparent;
+  border-color: transparent;
+  padding: 0;
+  font-weight: 400;
+  font-size: 11px;
+}
+.tps-reveal[open] > summary::before { content: "✓ "; }
+.tps-reveal .tps-steps { margin-top: 10px; }
 
 /* Exercise blocks (collapsible answer pattern) */
 .exercise {

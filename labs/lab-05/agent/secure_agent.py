@@ -84,8 +84,15 @@ def joined_scan(text: str) -> str | None:
     """Return the matched pattern if the joined text contains a known
     injection signature. Run over the concatenated context, not
     per-file, so cross-document fragmentation reassembles before the
-    scanner sees it."""
-    m = _INJECTION_RE.search(text)
+    scanner sees it.
+
+    We first strip the '=== filename ===' separators and collapse
+    whitespace, so a phrase split across the file boundary (e.g.
+    '...ignore' + 'previous instructions...') becomes contiguous
+    before the regex runs."""
+    flat = re.sub(r"=== .*? ===", " ", text)
+    flat = re.sub(r"\s+", " ", flat)
+    m = _INJECTION_RE.search(flat)
     return m.group(0) if m else None
 
 
