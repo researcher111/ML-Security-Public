@@ -4,7 +4,8 @@ Run:
     cd Class/labs/lab-08
     cp agent/.env.example agent/.env  # then edit with real Rivanna values
     pip install -r agent/requirements.txt
-    uvicorn agent.baseline_agent:app --port 8001 --reload
+    export AGENT_PORT=8013   # a free port — shared node, pick your own
+    uvicorn agent.baseline_agent:app --port $AGENT_PORT --reload
 
 Endpoints:
     GET  /health                              — health + name

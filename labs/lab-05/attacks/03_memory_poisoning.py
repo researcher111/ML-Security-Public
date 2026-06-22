@@ -25,7 +25,8 @@ from pathlib import Path
 import httpx
 
 
-AGENT = "http://127.0.0.1:8001"
+# Shared node: set AGENT_PORT to the unique port you launched uvicorn on.
+AGENT = f"http://127.0.0.1:{os.environ.get('AGENT_PORT', '8001')}"
 DEFAULT_DB = Path(__file__).resolve().parent.parent / "agent" / "notes.db"
 
 ATTACKER_URL = "http://192.168.50.2:8080/reset"   # the rogue portal

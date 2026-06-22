@@ -13,8 +13,8 @@ lab-05/
 ├── README.md               ← this file
 │
 ├── agent/
-│   ├── baseline_agent.py   ← vulnerable agent (run on port 8001)
-│   ├── secure_agent.py     ← hardened agent (run on port 8002)
+│   ├── baseline_agent.py   ← vulnerable agent (run on a free port via $AGENT_PORT)
+│   ├── secure_agent.py     ← hardened agent (run on a free port via $AGENT_PORT)
 │   ├── llm_client.py       ← OpenAI-compatible client (env-var driven)
 │   ├── tools.py            ← file_search, file_read, config_lookup
 │   ├── system_prompt.txt   ← system prompt with planted creds
@@ -24,7 +24,6 @@ lab-05/
 │
 ├── attacks/
 │   ├── 01_prompt_extraction.py  ← AML.T0051.000 direct injection
-│   ├── 02_indirect_injection.py ← AML.T0051.001 indirect
 │   └── 03_memory_poisoning.py   ← AML.T0020 data poisoning
 │
 └── solution/
@@ -40,20 +39,22 @@ pip install -r agent/requirements.txt
 cp agent/.env.example agent/.env
 $EDITOR agent/.env                 # fill in Rivanna GenAI values
 
-# terminal 1
-uvicorn agent.baseline_agent:app --port 8001 --reload
+# terminal 1 — shared node: pick a free port (see lab §2.3)
+export AGENT_PORT=8013
+uvicorn agent.baseline_agent:app --port $AGENT_PORT --reload
 
-# terminal 2
-python attacks/01_prompt_extraction.py
-python attacks/02_indirect_injection.py
+# terminal 2 — scripts read $AGENT_PORT
+export AGENT_PORT=8013
 python attacks/03_memory_poisoning.py
+python attacks/01_prompt_extraction.py
 ```
 
-Then start the secure version and re-run:
+Then start the secure version on a fresh free port and re-run:
 
 ```bash
-uvicorn agent.secure_agent:app --port 8002 --reload
-# edit AGENT="http://127.0.0.1:8002" in each attack script and re-run
+export AGENT_PORT=8014
+uvicorn agent.secure_agent:app --port $AGENT_PORT --reload
+# scripts read $AGENT_PORT, so just re-export it and re-run them
 ```
 
 ## Open in browser

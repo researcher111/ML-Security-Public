@@ -4,7 +4,7 @@ Configure with environment variables:
 
     LLM_BASE_URL   e.g. https://open-webui.rc.virginia.edu/api
     LLM_API_KEY    your Rivanna GenAI token (RC GenAI portal -> Settings -> Account -> API keys)
-    LLM_MODEL      e.g. moonshotai/kimi-k2-instruct
+    LLM_MODEL      e.g. Kimi K2.5
 
 If you are running against the Rivanna GenAI service, copy the
 endpoint URL, key, and exact model string from the RC GenAI portal:

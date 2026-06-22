@@ -9,8 +9,9 @@
        whose author is in TRUSTED_AUTHORS are served by /chat.
        Defeats memory poisoning from attack 03.
 
-Run alongside the baseline:
-    uvicorn agent.secure_agent:app --port 8002 --reload
+Run after stopping the baseline (shared node — pick a free port):
+    export AGENT_PORT=8014
+    uvicorn agent.secure_agent:app --port $AGENT_PORT --reload
 """
 
 from __future__ import annotations

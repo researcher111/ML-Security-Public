@@ -7,8 +7,9 @@ Two stages:
            response. The output filter checks for the credential as a
            literal substring; spaces break the match.
 
-Run after starting the baseline agent:
-    uvicorn agent.baseline_agent:app --port 8001 --reload
+Run after starting the baseline agent (set AGENT_PORT to your port):
+    export AGENT_PORT=8013
+    uvicorn agent.baseline_agent:app --port $AGENT_PORT --reload
 
 Then:
     python attacks/01_prompt_extraction.py
@@ -17,12 +18,14 @@ Then:
 from __future__ import annotations
 
 import json
+import os
 import sys
 
 import httpx
 
 
-AGENT = "http://127.0.0.1:8001"
+# Shared node: set AGENT_PORT to the unique port you launched uvicorn on.
+AGENT = f"http://127.0.0.1:{os.environ.get('AGENT_PORT', '8001')}"
 
 
 def chat(message: str) -> dict:
