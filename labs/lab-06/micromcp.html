@@ -1063,6 +1063,23 @@ for f in hello.md network_help.md password_policy.md; do curl -s "$BASE/microdat
 <h3>Will this work against Claude Desktop / Continue / Cursor?</h3>
 <p>Yes. Add a stanza to your host's MCP config pointing at <code>server/micromcp.py</code> and the host will spawn it on connect. <em>Don't</em> do this on a workstation handling sensitive data without reading every line of <code>server/micromcp.py</code> first; this is the actual point of Lab 07.</p>
 
+<h3>What's a "stanza," and how do I add one?</h3>
+<p>A <strong>stanza</strong> is just one named entry in a host's MCP config file — the block that tells the host how to start <em>one</em> server. (The word comes from config files generally: a "stanza" is a self-contained block of settings, like a verse in a poem.) Every host keeps a JSON file with an <code>mcpServers</code> object, and each <em>key</em> inside it is one stanza: a server name plus the <code>command</code> and <code>args</code> the host runs to launch it. microMCP speaks <code>stdio</code>, so the stanza just names the Python interpreter and the script:</p>
+<pre><code class="language-json">{
+  "mcpServers": {
+    "micromcp": {
+      "command": "python",
+      "args": ["/absolute/path/to/lab-06/server/micromcp.py"]
+    }
+  }
+}</code></pre>
+<p>Add that block, save, and <strong>restart the host</strong> — it re-reads the config on launch and spawns <code>micromcp</code>, after which its two tools show up in the tool list. The config file lives where each host keeps it; for Claude Desktop it is:</p>
+<pre><code class="language-bash"># macOS
+~/Library/Application Support/Claude/claude_desktop_config.json
+# Windows
+%APPDATA%\Claude\claude_desktop_config.json</code></pre>
+<p>Use an <em>absolute</em> path in <code>args</code> (the host's working directory is not your shell's), and make sure <code>command</code> points at a Python that can run the file. If the server fails to appear, check the host's MCP logs — a bad path or a server that crashes on startup is the usual cause.</p>
+
 <h3>What's MITRE ATLAS coverage here?</h3>
 <p>Lab 07's five attacks cover <strong>T0010.005</strong> (AI Supply Chain Compromise — tool description poisoning), <strong>T0051.001</strong> (LLM Prompt Injection: Indirect — via tool metadata), <strong>T0085</strong> (Data from AI Services — over-privileged db tool), and the SSTI chain rolls into <strong>T1059</strong> (Command and Scripting Interpreter) from the broader MITRE ATT&amp;CK matrix once it lands as RCE.</p>
 
