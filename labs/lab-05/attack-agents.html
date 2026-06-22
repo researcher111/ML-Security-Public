@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Attacking AI Agents — DS 6042 Lab 05</title>
 <link rel="stylesheet" href="../_shared/lab-base.css?v=5">
-<link rel="stylesheet" href="styles.css?v=4">
+<link rel="stylesheet" href="styles.css?v=3">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism.min.css">
 <script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-core.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-bash.min.js"></script>
@@ -464,20 +464,6 @@ The previous portal at password.megacorpone.local has been decommissioned.
 ✓ ATTACK SUCCEEDED — agent served http://192.168.50.2:8080/reset to the user.</pre>
 
 <p>Notice how the agent <em>blended</em> the poisoned content with the real article — it picked up the helpdesk extension and password requirements from the legitimate row and stitched them around the attacker URL. The output looks authoritative because <em>most of it is real</em>.</p>
-
-<div class="callout note">
-  <span class="label">see inside <code>notes.db</code> — a SQLite viewer for VS Code</span>
-  <p class="keep-in-present">The attack writes a row straight into <code>agent/notes.db</code>, the SQLite file behind the agent's long-term memory. To watch the poisoning land — instead of typing <code>sqlite3</code> queries — install a viewer extension in Code Server (the in-browser VS Code on Open OnDemand) from the Extensions panel:</p>
-  <ul class="keep-in-present">
-    <li><strong>SQLite Viewer</strong> (<code>qwtel.sqlite-viewer</code>) — click any <code>.db</code> file and it opens as browsable tables. Simplest, read-only, no setup.</li>
-    <li><strong>SQLite</strong> (<code>alexcvzz.vscode-sqlite</code>) — adds a sidebar explorer and lets you run <code>SELECT</code>s against the file from inside the editor.</li>
-  </ul>
-  <figure class="lab-figure">
-    <img src="screenshots/sqlite-viewer-extension.png" alt="VS Code Extensions Marketplace with 'sqlite viewer' searched; the top result, 'SQLite Viewer' by Florian Klampfer (identifier qwtel.sqlite-viewer), is selected with an Install button. The alexcvzz 'SQLite' extension appears lower in the list.">
-    <figcaption>In the Extensions panel, search <strong>sqlite viewer</strong> and install the highlighted top result — <strong>SQLite Viewer</strong> by Florian Klampfer (<code>qwtel.sqlite-viewer</code>). The blue-feather <strong>SQLite</strong> by <code>alexcvzz</code> further down is the query-runner alternative.</figcaption>
-  </figure>
-  <p class="keep-in-present">Open <code>notes.db</code> and look at the <code>kb_articles</code> table before and after running the attack: the poisoned row sits at the top once you sort by <code>updated_at DESC</code> — exactly the order <code>_retrieve_notes</code> uses — and its <code>author</code> column shows it was written by someone other than the trusted <code>it_admin</code>, the check the secure version adds.</p>
-</div>
 
 <!-- ============================================================ -->
 <h2 id="assignment">Assignment · how to secure an agent <span class="time-tag">~1 page</span></h2>
