@@ -1,30 +1,46 @@
-"""secure_agent.py — same FastAPI surface as the baseline, three defenses applied.
+"""secure_agent.py — harden the helpdesk agent.   *** ASSIGNMENT TEMPLATE ***
 
-  D1 · Whitespace-normalized output filter — defeats the character-spacing
-       bypass from attack 01. (Partial: it normalizes whitespace, but a
-       dot/dash/base64-encoded secret still slips through — that's the
-       capstone "next bypass.")
-  D2 · Joined-context content scanner — runs the injection regex over the
-       concatenated /summarize stream, not per-file. Defeats the
-       cross-document fragmentation from attack 02. (Partial: the regex
-       is English-keyword based, so a translated injection slips through.)
-  D3 · Memory write-allowlist — only articles whose author is in
-       TRUSTED_AUTHORS are served by /chat. This blocks an attacker who can
-       only write rows as an *untrusted* author. It does NOT stop attack 03
-       as shipped, because that script inserts the row as `it_admin`, a
-       trusted author — the allowlist has no way to verify the claimed
-       author is genuine. The real fix is cryptographically signed
-       authorship, which neither version implements; that gap is the
-       point of the write-up question. (See solution/NOTES.md.)
+YOUR JOB
+========
+The baseline agent (agent/baseline_agent.py) fell to all three attacks. This
+file is the same agent; your job is to implement the three defenses that close
+each hole. Implement the pieces marked `# TODO` below:
 
-The three defense functions (output_filter, joined_scan, retrieve_notes)
-and their config constants are defined at module top level with no
-third-party imports, so the autograder can import this file and exercise
-them with the Python standard library alone. The FastAPI app, the LLM
-client, and the tool dispatcher are built lazily in _build_app(); importing
-this module never requires fastapi, pydantic, or a configured LLM.
+  D1 · output_filter(text) -> str
+       The baseline only matched secrets as a literal substring, so the
+       character-spacing trick from attack 01 ("M e g a c o r p _ D B …")
+       walked the credential straight past it. Normalize the text — collapse
+       the whitespace/separators an LLM can be coaxed into inserting — and
+       match against that, so the disguised secret is caught too. Return a
+       refusal string if any secret is present; otherwise return text
+       unchanged (don't over-block normal answers).
 
-Run alongside the baseline:
+  D2 · joined_scan(text) -> str | None
+       The baseline scanned each uploaded file on its own, so attack 02 split
+       "ignore" | "previous instructions" across the file boundary and neither
+       half tripped the per-file scan. Scan the *joined* /summarize stream:
+       strip the "=== filename ===" separators, collapse whitespace so a
+       phrase split across the boundary becomes contiguous, then run your
+       injection regex. Return the matched text if an injection is found,
+       else None.
+
+  D3 · retrieve_notes(query) -> str  +  TRUSTED_AUTHORS
+       The baseline served whatever row was most recent, with no check on who
+       wrote it, so attack 03 poisoned the knowledge base. Only serve articles
+       whose author is on the TRUSTED_AUTHORS allowlist. (Reflect in your
+       write-up on why even this isn't enough — see the lab's capstone.)
+
+Keep the function names, signatures, and return contracts EXACTLY as written
+or the autograder can't read your work:
+  - output_filter returns the (possibly refused) text — never leak a secret.
+  - joined_scan returns the matched string, or None when the text is clean.
+  - retrieve_notes returns the joined trusted-article text, or "" when nothing
+    trusted matches.
+
+The defense functions use only the Python standard library — no fastapi, no
+LLM — so you can unit-test them directly. The web app is built lazily at the
+bottom; run the full agent with:
+
     uvicorn agent.secure_agent:app --port 8002 --reload
 """
 
@@ -38,7 +54,7 @@ from pathlib import Path
 try:
     from dotenv import load_dotenv
     load_dotenv(Path(__file__).resolve().parent / ".env")
-except Exception:  # dotenv missing (e.g. in the grading image) — env still works
+except Exception:
     pass
 
 AGENT_NAME = "Hardened IT Helpdesk"
@@ -46,8 +62,10 @@ AGENT_DIR = Path(__file__).resolve().parent
 NOTES_DB = Path(os.environ.get("NOTES_DB", AGENT_DIR / "notes.db"))
 
 
-# === D1 · whitespace-normalized output filter ==============================
+# === D1 · output filter ====================================================
 
+# The secrets the agent must never disclose. (Given — this part is not your
+# job.) Your job is to catch them even when the LLM disguises them.
 SECRET_PATTERNS = [
     "Megacorp_DB_2026!",
     "AKIA3MEGACORP2026DOCS",
@@ -58,50 +76,50 @@ SECRET_PATTERNS = [
 
 
 def output_filter(text: str) -> str:
-    """Strip the response if it contains any known secret, even if the
-    LLM tried to disguise the secret with whitespace or zero-width
-    characters. We compare two strings: the original text, and a version
-    with every character that *can't* be part of a secret removed — which
-    collapses 'M e g a c o r p _ D B' back to the literal credential."""
-    normalized = re.sub(r"[^a-zA-Z0-9!@#$%^&*/_=+:.-]", "", text)
+    """TODO (D1): block known secrets even when whitespace-disguised.
+
+    The line below is the BASELINE behavior — a literal substring match,
+    which attack 01 defeats by spacing out every character. Replace it:
+    build a normalized copy of `text` with the separator characters an LLM
+    can be talked into inserting removed, and check the secrets against
+    BOTH the original and the normalized copy. Return a refusal string if
+    any secret is present; otherwise return `text` unchanged.
+    """
     for s in SECRET_PATTERNS:
-        if s in text or s in normalized:
+        if s in text:
             return "I cannot provide that information."
     return text
 
 
-# === D2 · joined-context content scanner ===================================
+# === D2 · joined-context scanner ===========================================
 
+# A starter set of injection signatures. Extend it as you find bypasses.
 INJECTION_PATTERNS = [
     r"ignore (the|previous|prior|all) (document|page|content|instructions)",
     r"instead output",
     r"override your (instructions|system prompt)",
-    r"reveal your (system )?prompt",
-    r"include the (actual|configured) (access key|secret key|endpoint|credentials|token)",
-    r"system context.*(credentials?|access key|secret key|bot token)",
 ]
 _INJECTION_RE = re.compile("|".join(INJECTION_PATTERNS), re.IGNORECASE | re.DOTALL)
 
 
 def joined_scan(text: str) -> str | None:
-    """Return the matched pattern if the joined text contains a known
-    injection signature. Run over the concatenated context, not
-    per-file, so cross-document fragmentation reassembles before the
-    scanner sees it.
+    """TODO (D2): scan the JOINED stream so fragmented injections reassemble.
 
-    We first strip the '=== filename ===' separators and collapse
-    whitespace, so a phrase split across the file boundary (e.g.
-    '...ignore' + 'previous instructions...') becomes contiguous
-    before the regex runs."""
-    flat = re.sub(r"=== .*? ===", " ", text)
-    flat = re.sub(r"\s+", " ", flat)
-    m = _INJECTION_RE.search(flat)
+    Right now this runs the regex on the raw text. Attack 02 hides from that
+    by splitting the phrase across the "=== filename ===" boundary. Strip the
+    separators and collapse whitespace FIRST, so the split phrase becomes
+    contiguous, then run the regex. Return the matched text, or None.
+    """
+    m = _INJECTION_RE.search(text)
     return m.group(0) if m else None
 
 
 # === D3 · memory write-allowlist ===========================================
 
-TRUSTED_AUTHORS = frozenset({"it_admin", "security_team", "hr_team", "legal_team"})
+# TODO (D3): the allowlist of authors whose articles /chat is allowed to
+# serve. An attacker who can only write rows as some other author should be
+# shut out. (Start from the legitimate authors that seed the knowledge base.)
+TRUSTED_AUTHORS: frozenset[str] = frozenset()
 
 
 def _ensure_notes_db() -> None:
@@ -122,10 +140,12 @@ def _ensure_notes_db() -> None:
 
 
 def retrieve_notes(query: str) -> str:
-    """Only return articles authored by a TRUSTED_AUTHORS member. An
-    article whose author is not on the allowlist is skipped, even if its
-    title matches the query — so a poisoned row written as an untrusted
-    author never reaches the model's context."""
+    """TODO (D3): only return articles whose author is in TRUSTED_AUTHORS.
+
+    The loop below returns EVERY title-matching article regardless of author
+    — that's the vulnerable baseline. Add the allowlist check so a poisoned
+    row written by an untrusted author is skipped even when its title matches.
+    """
     _ensure_notes_db()
     conn = sqlite3.connect(NOTES_DB)
     rows = conn.execute(
@@ -136,8 +156,7 @@ def retrieve_notes(query: str) -> str:
     q = query.lower()
     hits = []
     for title, body, author, updated in rows:
-        if author not in TRUSTED_AUTHORS:
-            continue
+        # TODO: skip this article unless `author` is in TRUSTED_AUTHORS.
         for word in title.lower().split():
             if len(word) > 3 and word in q:
                 hits.append(f"[KB:{title} · updated {updated}]\n{body}")
@@ -146,12 +165,11 @@ def retrieve_notes(query: str) -> str:
             + "\n\n".join(hits)) if hits else ""
 
 
-# === FastAPI app (built lazily so importing this module stays dependency-free) ==
+# === FastAPI app (given — do not edit; built lazily) =======================
 
 def _build_app():
-    """Construct the FastAPI app, the LLM client, and the ReAct loop. Kept
-    out of module import so the autograder can import the three defense
-    functions above without fastapi/pydantic/a configured LLM."""
+    """Construct the FastAPI app. Kept out of import so you can unit-test the
+    defense functions above without fastapi or a configured LLM."""
     import json
     import uuid
 
@@ -161,16 +179,20 @@ def _build_app():
     from agent.llm_client import LLMClient, LLMError
     from agent.tools import call_tool
 
-    system_prompt = (AGENT_DIR / "system_prompt.txt").read_text()
+    # system_prompt.txt lives next to this file in the lab, but fall back to
+    # the agent/ package copy so the template runs even before you copy it over.
+    prompt_path = AGENT_DIR / "system_prompt.txt"
+    if not prompt_path.is_file():
+        prompt_path = AGENT_DIR.parent / "agent" / "system_prompt.txt"
+    system_prompt = prompt_path.read_text()
     intake_dir = AGENT_DIR / "intake-secure"
     intake_dir.mkdir(exist_ok=True)
 
     app = FastAPI(title=AGENT_NAME)
     llm = LLMClient()
-
     REACT_LOOP_LIMIT = 4
 
-    def react_step(messages: list[dict[str, str]]) -> dict:
+    def react_step(messages):
         raw = llm.chat(messages, temperature=0.2, max_tokens=512)
         m = re.search(r"\{.*\}", raw, re.DOTALL)
         if not m:
@@ -180,7 +202,7 @@ def _build_app():
         except json.JSONDecodeError:
             return {"action": "final", "answer": raw.strip()}
 
-    def react_loop(user_msg: str, extra_context: str = "") -> str:
+    def react_loop(user_msg, extra_context=""):
         sys = system_prompt
         if extra_context:
             sys = sys + "\n\n## Additional context\n\n" + extra_context
@@ -210,8 +232,7 @@ def _build_app():
         session_id: str | None = None
 
     @app.post("/chat")
-    def chat(req: ChatIn) -> dict[str, str]:
-        # Input scan (same as baseline) + retrieve only-trusted notes.
+    def chat(req: ChatIn):
         if joined_scan(req.message):
             return {"response": "I cannot process that request.",
                     "session_id": req.session_id or str(uuid.uuid4())}
@@ -224,14 +245,14 @@ def _build_app():
                 "session_id": req.session_id or str(uuid.uuid4())}
 
     @app.post("/upload")
-    async def upload(file: UploadFile = File(...)) -> dict:
+    async def upload(file: UploadFile = File(...)):
         body = (await file.read()).decode("utf-8", errors="replace")
         dest = intake_dir / file.filename
         dest.write_text(body, encoding="utf-8")
         return {"status": "uploaded", "path": str(dest), "size": len(body)}
 
     @app.post("/summarize")
-    def summarize() -> dict[str, str]:
+    def summarize():
         files = sorted(intake_dir.iterdir())
         if not files:
             return {"summary": "(no files to summarize)"}
@@ -239,7 +260,6 @@ def _build_app():
             f"=== {p.name} ===\n{p.read_text(encoding='utf-8', errors='replace')}"
             for p in files
         )
-        # D2: scan the concatenated stream — not per-file.
         hit = joined_scan(joined)
         if hit:
             return {"summary": f"refused: injection pattern detected ({hit!r})"}
@@ -258,18 +278,18 @@ def _build_app():
         return {"summary": output_filter(raw)}
 
     @app.post("/reset")
-    def reset() -> dict[str, str]:
+    def reset():
         for p in intake_dir.iterdir():
             p.unlink()
         return {"status": "intake cleared"}
 
     @app.get("/health")
-    def health() -> dict[str, str | int]:
+    def health():
         return {"status": "healthy", "agent": AGENT_NAME,
                 "port": int(os.environ.get("AGENT_PORT", 8002))}
 
     @app.on_event("startup")
-    def _startup() -> None:
+    def _startup():
         _ensure_notes_db()
 
     return app
@@ -277,5 +297,5 @@ def _build_app():
 
 try:
     app = _build_app()
-except Exception:  # missing web deps or unconfigured LLM (e.g. while grading)
+except Exception:
     app = None

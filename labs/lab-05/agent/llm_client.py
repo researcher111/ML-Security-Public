@@ -4,7 +4,7 @@ Configure with environment variables:
 
     LLM_BASE_URL   e.g. https://open-webui.rc.virginia.edu/api
     LLM_API_KEY    your Rivanna GenAI token (RC GenAI portal -> Settings -> Account -> API keys)
-    LLM_MODEL      e.g. Kimi K2.5
+    LLM_MODEL      e.g. moonshotai/kimi-k2-instruct
 
 If you are running against the Rivanna GenAI service, copy the
 endpoint URL, key, and exact model string from the RC GenAI portal:
@@ -76,42 +76,8 @@ class LLMClient:
         if r.status_code != 200:
             raise LLMError(f"LLM HTTP {r.status_code}: {r.text[:300]}")
 
-        text = r.text
-        ctype = r.headers.get("content-type", "")
-
-        # The RC GenAI endpoint streams Server-Sent Events even for a
-        # one-shot call ("data: {json}\n\n" per chunk), so r.json() would
-        # choke on the very first line. Detect that and stitch the
-        # assistant's content deltas back together. A plain non-streaming
-        # server (local vLLM / Ollama) still works via the JSON path below.
-        if "text/event-stream" in ctype or text.lstrip().startswith("data:"):
-            return _parse_sse(text)
-
         try:
             data = r.json()
             return data["choices"][0]["message"]["content"]
-        except (KeyError, IndexError, json.JSONDecodeError) as e:
-            raise LLMError(f"unexpected response shape: {text[:300]}") from e
-
-
-def _parse_sse(text: str) -> str:
-    """Reassemble an OpenAI-style streamed chat completion.
-
-    Each event is a line of the form 'data: {json}'; we accumulate the
-    'choices[0].delta.content' fragments and ignore non-content deltas
-    (e.g. Kimi's private 'reasoning' stream)."""
-    out: list[str] = []
-    for line in text.splitlines():
-        if not line.startswith("data:"):
-            continue
-        payload = line[5:].strip()
-        if not payload or payload == "[DONE]":
-            continue
-        try:
-            choice = json.loads(payload)["choices"][0]
-        except (json.JSONDecodeError, KeyError, IndexError):
-            continue
-        piece = choice.get("delta", {}).get("content") or ""
-        if piece:
-            out.append(piece)
-    return "".join(out).strip()
+        except (KeyError, json.JSONDecodeError) as e:
+            raise LLMError(f"unexpected response shape: {r.text[:300]}") from e
