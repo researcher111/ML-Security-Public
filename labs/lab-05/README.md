@@ -9,7 +9,7 @@ plus a 3-hour assignment.
 lab-05/
 ├── attack-agents.html      ← main lab page (student-facing)
 ├── styles.css              ← per-lab styles
-├── viz.js                  ← four interactive widgets
+├── viz.js                  ← three interactive widgets
 ├── README.md               ← this file
 │
 ├── agent/
@@ -23,7 +23,6 @@ lab-05/
 │   └── data/               ← fake employee files, config.json
 │
 ├── attacks/
-│   ├── 01_prompt_extraction.py  ← AML.T0051.000 direct injection
 │   └── 03_memory_poisoning.py   ← AML.T0020 data poisoning
 │
 └── solution/
@@ -43,10 +42,9 @@ $EDITOR agent/.env                 # fill in Rivanna GenAI values
 export AGENT_PORT=8013
 uvicorn agent.baseline_agent:app --port $AGENT_PORT --reload
 
-# terminal 2 — scripts read $AGENT_PORT
+# terminal 2 — script reads $AGENT_PORT
 export AGENT_PORT=8013
 python attacks/03_memory_poisoning.py
-python attacks/01_prompt_extraction.py
 ```
 
 Then start the secure version on a fresh free port and re-run:

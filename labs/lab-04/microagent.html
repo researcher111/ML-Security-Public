@@ -599,11 +599,10 @@ agent&gt; Visit https://password.megacorpone.local. Locked out? Ext. 4357.</pre>
 <!-- ============================================================ -->
 <h2 id="whats-next">4 · What's next · before the attacks</h2>
 
-<p><a href="../lab-05/attack-agents.html"><strong>Lab 05 · Attacking AI Agents</strong></a> takes the production agent (<code>baseline_agent.py</code>) and runs two canonical attacks against it. Lab 05 now opens by walking that agent block by block — the same FastAPI service, the two pattern-matching filters, and the SQLite memory — and then attacks two of those seams in turn:</p>
+<p><a href="../lab-05/attack-agents.html"><strong>Lab 05 · Attacking AI Agents</strong></a> takes the production agent (<code>baseline_agent.py</code>) and runs the canonical memory-poisoning attack against it. Lab 05 opens by walking that agent block by block — the same FastAPI service, the two pattern-matching filters, and the SQLite memory — then attacks the seam that matters most:</p>
 
 <ol>
-  <li>The unverified <strong>knowledge-base retrieval</strong> — persistent memory poisoning.</li>
-  <li>The two pattern-matching <strong>filters</strong> — direct prompt extraction.</li>
+  <li>The unverified <strong>knowledge-base retrieval</strong> — persistent memory poisoning: one planted row changes the agent's answer for every future user.</li>
 </ol>
 
 <p>Before you click through, look back at microagent one more time. Everything Lab 05 attacks is one new line or one new function bolted onto the loop you just read — once you can hold microagent in your head, the production agent is just microagent with a deployment story, and the bolts are where the attacks live. The further you can reason about each seam on your own first, the more useful Lab 05 will be.</p>
@@ -620,7 +619,7 @@ def chat(req: ChatIn) -> dict[str, str]:
     answer = react_loop(req.message, extra_context=notes)
     return {"response": output_filter(answer), ...}   # runs AFTER the LLM</code></pre>
 
-<p><strong>2 · Two pattern-matching filters.</strong> Both compare against fixed strings with Python's <code>in</code>. Anything that <em>means</em> the same thing without matching the literal string sails past — that is Attack 2 (prompt extraction).</p>
+<p><strong>2 · Two pattern-matching filters.</strong> Both compare against fixed strings with Python's <code>in</code>. Anything that <em>means</em> the same thing without matching the literal string sails past — a blind spot Lab 05 leaves vulnerable for you to explore on your own.</p>
 <pre><code class="language-python">def input_filter(text):
     low = text.lower()
     return ("I cannot process that request."
@@ -629,13 +628,13 @@ def output_filter(text):
     return ("I cannot provide that information."
             if any(s in text for s in SECRET_PATTERNS) else text)</code></pre>
 
-<p><strong>3 · Unverified long-term memory.</strong> Retrieval sorts by recency and never checks <em>who</em> wrote the row. Whoever writes last owns the agent's next answer on that topic — that is Attack 1 (memory poisoning).</p>
+<p><strong>3 · Unverified long-term memory.</strong> Retrieval sorts by recency and never checks <em>who</em> wrote the row. Whoever writes last owns the agent's next answer on that topic — that is the memory-poisoning attack Lab 05 walks end to end.</p>
 <pre><code class="language-python">rows = conn.execute(
     "SELECT title, body, author, updated_at FROM kb_articles "
     "ORDER BY updated_at DESC"        # freshest wins, author never checked
 ).fetchall()</code></pre>
 
-<p>That is the whole game: more surface, same loop. Lab 05 walks both seams in detail, then attacks each one — a hardened <code>secure_agent.py</code> ships alongside if you want to see how the same payloads get blocked.</p>
+<p>That is the whole game: more surface, same loop. Lab 05 walks the agent in detail, then attacks its memory — a hardened <code>secure_agent.py</code> ships alongside if you want to see how the same payload gets blocked.</p>
 
 <!-- ============================================================ -->
 <h2 id="assignment">Assignment · give the agent a shell — and a leash <span class="time-tag">~2 hours · autograded</span></h2>
