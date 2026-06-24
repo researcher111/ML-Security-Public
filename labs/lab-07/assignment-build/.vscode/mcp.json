@@ -1,0 +1,10 @@
+{
+  "//": "VS Code MCP config. Open this folder in VS Code (or Code Server on Rivanna), then start the server from the Run button on this file, or via the MCP: List Servers command. Copilot agent mode / any MCP client in VS Code can then call your tools. Requires `pip install mcp` in the Python environment VS Code uses.",
+  "servers": {
+    "my-server": {
+      "type": "stdio",
+      "command": "python",
+      "args": ["my_server.py"]
+    }
+  }
+}

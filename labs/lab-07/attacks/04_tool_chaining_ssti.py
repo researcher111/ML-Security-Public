@@ -1,4 +1,4 @@
-"""05_tool_chaining_ssti.py — Server-Side Template Injection through
+"""04_tool_chaining_ssti.py — Server-Side Template Injection through
 the ticket → compile → render pipeline.
 
 Three tools are individually well-behaved:
@@ -18,7 +18,7 @@ Three stages, escalating:
     C. (assignment) reverse shell · split across multiple tickets
 
 Usage:
-    .venv/bin/python attacks/05_tool_chaining_ssti.py
+    .venv/bin/python attacks/04_tool_chaining_ssti.py
 """
 
 import re
@@ -67,9 +67,9 @@ into an interactive shell, you would:
         nc -lvnp 4444
 
   2. Split the reverse-shell command across multiple tickets so no
-     single ticket triggers any host-side safety filter. The OffSec
-     §7.3.3 walkthrough uses chr-encoded fragments and Jinja2
-     concatenation, then a final {% set ... %} block to call
+     single ticket triggers any host-side safety filter. A robust
+     technique uses chr-encoded fragments and Jinja2 concatenation,
+     then a final {% set ... %} block to call
      lipsum.__globals__['os'].popen.
 
   3. Use one final compile_sprint → render_report call to trigger

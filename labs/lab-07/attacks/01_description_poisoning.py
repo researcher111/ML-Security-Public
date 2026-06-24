@@ -45,7 +45,9 @@ def main() -> int:
     else:
         DESC_FILE.write_text(original.rstrip() + POISON_SUFFIX + "\n")
         print(f"   wrote {len(POISON_SUFFIX)} extra characters to {DESC_FILE.name}")
-        print("   restart the uvicorn server (or wait for --reload) before continuing.")
+        print("   RESTART uvicorn before continuing. The server reads this file ONCE")
+        print("   at import (FORMAT_CODE_DESCRIPTION in server/baseline_server.py); its")
+        print("   --reload only watches .py files, so it will NOT notice this .txt edit.")
         input("   press Enter when you've restarted the server… ")
 
     banner("Stage C · fetch the catalog and verify the poison shipped")

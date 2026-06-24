@@ -2,7 +2,7 @@
 
 Same JSON-RPC shape as microMCP, but over HTTP instead of stdio, with
 four tools that each carry one or more planted vulnerabilities matching
-the OffSec AI-300 §7 syllabus:
+the canonical MCP attack taxonomy:
 
     Vuln 1 · format_code        — poisonable description (T0010.005 supply chain)
     Vuln 2 · read_document      — prefix-before-normalize path traversal

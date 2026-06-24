@@ -5,7 +5,7 @@ Same JSON-RPC shape, same tool catalog, four defenses applied:
   D1 · description hash pin             — defeats Attack 1 description poisoning
   D2 · post-resolve sandbox re-check    — defeats Attack 2 path traversal
   D3 · per-tool table allowlist         — defeats Attack 3 over-privileged DB
-  D4 · Jinja2 SandboxedEnvironment      — defeats Attack 5 SSTI chain
+  D4 · Jinja2 SandboxedEnvironment      — defeats Attack 4 SSTI chain
 
 Run on a different port from the baseline:
 
