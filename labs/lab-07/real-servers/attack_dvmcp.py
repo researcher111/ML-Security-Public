@@ -1,9 +1,10 @@
 """attack_dvmcp.py — YOUR turn.  DVMCP Challenge 8 · "Malicious Code Execution".
 
-You stood the server up on Rivanna and forwarded port 9008 to your laptop
-(see RIVANNA.md). This script already connects over the tunnel, lists the
-tools, and confirms the evaluate_expression tool runs arithmetic. Your job is
-to turn "evaluate a math expression" into "run my code in the server process."
+You stood the server up on a Rivanna compute node (see RIVANNA.md). This script
+runs in a VS Code terminal on that same node and connects to the server at
+127.0.0.1:9008, lists the tools, and confirms the evaluate_expression tool runs
+arithmetic. Your job is to turn "evaluate a math expression" into "run my code
+in the server process."
 
 Look at the tool on the server:
 
@@ -16,7 +17,7 @@ Look at the tool on the server:
 expression that executes a shell command (or imports os) and returns its output
 as the value of the expression, then run:
 
-    python real-servers/attack_dvmcp.py            # default: tunnel on port 9008
+    python real-servers/attack_dvmcp.py            # default: 127.0.0.1:9008 on the node
     python real-servers/attack_dvmcp.py --url URL
 
 Success = Stage B prints a uid=... line, proving `id` ran on the SERVER.
@@ -63,7 +64,7 @@ async def attack(url: str) -> int:
         out = text_of(await s.call_tool(TOOL, {"expression": PAYLOAD}))
         print(out)
 
-        banner("Stage C · prove it ran on the SERVER, not your laptop")
+        banner("Stage C · prove it ran in the SERVER process, not this script")
         host = text_of(await s.call_tool(TOOL, {"expression": "__import__('socket').gethostname()"}))
         print(host)
 

@@ -55,7 +55,7 @@
   <div class="eyebrow">DS 6042 · Lab 07 · 2026</div>
   <h1>Attacking MCP</h1>
   <p class="subtitle">Four canonical attacks on a production-shape MCP server — then the same attacks against three real, CVE-bearing servers deployed on Rivanna. Description poisoning. Path traversal. Over-privileged tools. SSTI, command &amp; argument injection to RCE.</p>
-  <p class="byline">Lab 07 attacks the production-shape twin of the server you read in <a href="../lab-06/micromcp.html">Lab 06 microMCP</a>. Same JSON-RPC shape; seven tools instead of two; HTTP transport instead of stdio; four planted vulnerabilities matching the relevant MITRE ATLAS techniques. By the end of the lab you have run all four attacks end-to-end, including SSTI → RCE that lands a shell on the server. <strong>Part 2 (§7–§11)</strong> then turns the same attacks loose on three <em>real</em>, CVE-bearing MCP servers — including Anthropic's own reference implementation — deployed on Rivanna and exploited from your laptop over an SSH tunnel.</p>
+  <p class="byline">Lab 07 attacks the production-shape twin of the server you read in <a href="../lab-06/micromcp.html">Lab 06 microMCP</a>. Same JSON-RPC shape; seven tools instead of two; HTTP transport instead of stdio; four planted vulnerabilities matching the relevant MITRE ATLAS techniques. By the end of the lab you have run all four attacks end-to-end, including SSTI → RCE that lands a shell on the server. <strong>Part 2 (§7–§11)</strong> then turns the same attacks loose on three <em>real</em>, CVE-bearing MCP servers — including Anthropic's own reference implementation — deployed on a Rivanna compute node and exploited from inside VS Code, with its ports forwarded to your browser.</p>
 </header>
 
 <p class="course-frame keep-in-present">
@@ -670,16 +670,26 @@ uid=501(danielgraham) gid=20(staff) groups=...
 </div>
 
 <!-- ============================================================ -->
-<h2 id="rivanna">8 · Deploy on Rivanna &amp; port-forward <span class="time-tag">~25 min</span></h2>
+<h2 id="rivanna">8 · Deploy on Rivanna &amp; forward ports in VS Code <span class="time-tag">~25 min</span></h2>
 
-<p>These servers run on a <strong>Rivanna compute node</strong>, not your laptop — which is the whole point. When your exploit lands, the code runs on a <em>different machine you reached over the network</em>, exactly like a real engagement. You reach them through an <strong>SSH port-forward</strong> (a "tunnel"): <code>ssh -L 9008:localhost:9008</code> makes port 9008 <em>on your laptop</em> actually talk to port 9008 <em>on Rivanna</em>, so your attack script connects to <code>127.0.0.1</code> while the server is miles away.</p>
+<p>These servers run on a <strong>Rivanna compute node</strong>, not your laptop — which is the whole point. When your exploit lands, the code runs on a <em>different machine you reached over the network</em>, exactly like a real engagement. The good news: you're <em>already on that node</em> — the OOD Code Server you launched in §1 <strong>is</strong> VS Code running on Rivanna, so every command in this section runs in its terminal and your attack scripts reach the servers at <code>127.0.0.1:&lt;port&gt;</code> directly. No SSH tunnel to set up.</p>
 
-<pre class="term-snippet">  Rivanna compute node                              your laptop
-  ┌─────────────────────────────────────┐           ┌──────────────────────┐
-  │ DVMCP challenge 8    →  :9008 (SSE)  │           │ python real-servers/ │
-  │ git-mcp-server  → supergateway :8090 │◄─ ssh -L ─►│   attack_*.py        │
-  │ mcp-server-git  → supergateway :8091 │  (tunnel) │ → http://127.0.0.1:… │
-  └─────────────────────────────────────┘           └──────────────────────┘</pre>
+<p>To <em>see</em> a server from your laptop's browser (handy for sanity-checking the SSE endpoint), use VS Code's built-in <strong>port forwarding</strong> instead of the old <code>ssh -L</code> tunnel: when a process starts listening, VS Code detects the port and lists it in the <strong>Ports</strong> panel, exposing it as a private, authenticated URL through Open OnDemand (<code>ood.hpc.virginia.edu/…/proxy/&lt;port&gt;/</code>) that only your session can reach.</p>
+
+<pre class="term-snippet">  Rivanna compute node  ── you are here, inside VS Code (OOD Code Server) ──
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ DVMCP challenge 8   →  :9008 (SSE)                                     │
+  │ git-mcp-server  → supergateway :8090      VS Code "Ports" panel        │
+  │ mcp-server-git  → supergateway :8091      auto-forwards 9008/8090/8091 │
+  │                                           → ood.hpc.virginia.edu/…/    │
+  │ python real-servers/attack_*.py           proxy/&lt;port&gt;/  (browser view) │
+  │   → http://127.0.0.1:&lt;port&gt;  (same node)  private to your session      │
+  └──────────────────────────────────────────────────────────────────────┘</pre>
+
+<figure class="lab-figure">
+  <img src="vscode-ports.png" alt="VS Code Ports panel listing three forwarded ports — 8002, 8081, 8091 — each with a forwarded address of the form https://ood.hpc.virginia.edu/rnode/udc-.../proxy/PORT/ and Origin set to 'Auto Forwarded'.">
+  <figcaption>VS Code's <strong>Ports</strong> panel on Rivanna. As each MCP server starts listening, VS Code auto-forwards its port and gives you an <code>ood.hpc.virginia.edu/…/proxy/&lt;port&gt;/</code> URL — open it in your laptop browser to inspect the live SSE endpoint. The green dot marks a port with an active listener. (Use <strong>Forward a Port</strong> to add one by hand if it isn't auto-detected.)</figcaption>
+</figure>
 
 <p>Two MCP <em>transports</em> show up here. DVMCP speaks <strong>SSE</strong> (Server-Sent Events — MCP over an HTTP stream) natively, so it already listens on a forwardable TCP port. The two git servers speak <strong>stdio</strong> (the host launches them as a subprocess and talks over <code>stdin</code>/<code>stdout</code> — there's no port to forward). To put them on the wire we wrap each one with <strong>supergateway</strong>, a one-line bridge that runs a stdio MCP server and re-exposes it as SSE on a port. After wrapping, all three look identical to the client — which is why the one tiny MCP client in <code>real-servers/_mcp_sse.py</code> drives all three.</p>
 
@@ -702,15 +712,12 @@ npx -y supergateway --host 127.0.0.1 --port 8090 \
 # 3) Anthropic mcp-server-git (vulnerable 2025.11.25), wrapped to SSE on 8091
 pip install "mcp-server-git==2025.11.25"
 npx -y supergateway --host 127.0.0.1 --port 8091 --stdio "python -m mcp_server_git"</code></pre>
-  <p>Then, from your laptop, one tunnel for all three (jump through the login node to the compute node):</p>
-<pre><code class="language-bash">ssh -N -J &lt;id&gt;@rivanna.hpc.virginia.edu \
-  -L 9008:localhost:9008 -L 8090:localhost:8090 -L 8091:localhost:8091 \
-  &lt;id&gt;@&lt;COMPUTE_NODE&gt;</code></pre>
+  <p>Run each of the three in its own VS Code terminal (<strong>Terminal → New Terminal</strong>, or split the panel). As each one binds its port, it appears in the <strong>Ports</strong> panel automatically — no <code>ssh -L</code>, no jumping through the login node. If a port doesn't show up, open the <strong>Ports</strong> panel (<kbd>Ctrl/Cmd</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd> → "Ports: Focus on Ports View"), click <strong>Forward a Port</strong>, and type the number (9008, 8090, 8091).</p>
 </div>
 
 <div class="callout note">
   <span class="label">pin the vulnerable versions</span>
-  <p><code>git-mcp-server</code> is patched in <strong>2.1.5</strong>; <code>mcp-server-git</code> in <strong>2025.12.18</strong>. Installing "latest" gives you the <em>fixed</em> code — useful for §Secure, useless for the attack. And a real security note: the DVMCP SSE server hard-codes <code>host="0.0.0.0"</code>, exposing this deliberately vulnerable target to everyone on the node. Bind to <code>127.0.0.1</code> and stay behind your tunnel. See the authorized-use note in <code>RIVANNA.md</code>.</p>
+  <p><code>git-mcp-server</code> is patched in <strong>2.1.5</strong>; <code>mcp-server-git</code> in <strong>2025.12.18</strong>. Installing "latest" gives you the <em>fixed</em> code — useful for §Secure, useless for the attack. And a real security note: the DVMCP SSE server hard-codes <code>host="0.0.0.0"</code>, exposing this deliberately vulnerable target to everyone on the node. Bind to <code>127.0.0.1</code> and let VS Code forward it privately to you instead. See the authorized-use note in <code>RIVANNA.md</code>.</p>
 </div>
 
 <!-- ============================================================ -->
@@ -748,8 +755,8 @@ def evaluate_expression(expression: str) -> str:
 </div>
 
 <h3 id="real-dvmcp-try">10.1 · Your turn — write the payload</h3>
-<p>The script <code>real-servers/attack_dvmcp.py</code> connects over your tunnel, lists the tools, and confirms <code>6*7 → 42</code>. It leaves <strong>one thing</strong> for you: the <code>PAYLOAD</code> expression in the <code># YOUR JOB</code> block. Fill it in, then run it.</p>
-<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">python real-servers/attack_dvmcp.py</span>     <span class="term-comment"># talks to 127.0.0.1:9008 through the tunnel</span></pre>
+<p>The script <code>real-servers/attack_dvmcp.py</code> connects to the server on the compute node, lists the tools, and confirms <code>6*7 → 42</code>. It leaves <strong>one thing</strong> for you: the <code>PAYLOAD</code> expression in the <code># YOUR JOB</code> block. Fill it in, then run it.</p>
+<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">python real-servers/attack_dvmcp.py</span>     <span class="term-comment"># talks to 127.0.0.1:9008 on the same node</span></pre>
 
 <div class="exercise">
   <span class="exercise-q">Your turn · the eval payload</span>
@@ -909,14 +916,14 @@ Stripe  payment_processing  sk_live_… [MEGACORP-FLAG-…]
 PASS · your bypass retrieved the planted credential (MEGACORP-FLAG-…).</pre>
 <p><strong>Optional + 15</strong> — turn the §5 <code>id</code>-level RCE into a working reverse shell using a chr-encoding fragments-across-tickets technique (sketched in <code>attacks/04_tool_chaining_ssti.py</code>).</p>
 
-<h3>Part 2 — build your own MCP server, for VS Code (group)</h3>
-<p>Work in your <strong>group</strong>. Build a real MCP server, host it on GitHub, and make it usable from VS Code — then run the same Build → Break → Secure arc on a server <em>you</em> wrote. The starter kit is in <code>assignment-build/</code> (a minimal server on the official <code>mcp</code> SDK, plus a sample <code>.vscode/mcp.json</code>).</p>
+<h3>Part 2 — build your own MCP server, test it with MCP Inspector (group)</h3>
+<p>Work in your <strong>group</strong>. Build a real MCP server, host it on GitHub, and prove it loads in a real MCP client — then run the same Build → Break → Secure arc on a server <em>you</em> wrote. The starter kit is in <code>assignment-build/</code> (a minimal server on the official <code>mcp</code> SDK). We test with the official <strong>MCP Inspector</strong> rather than an IDE host because IDE MCP support is still in preview and awkward to install; Inspector is zero-install (<code>npx</code>) and runs the same on your laptop or the Code Server on Rivanna.</p>
 <ol>
-  <li><strong>Build</strong> — implement <code>my_server.py</code> so it exposes <strong>at least two working tools</strong> over MCP, one of which touches something sensitive (reads a file, queries data, renders a template). It must <strong>load as an MCP server in VS Code</strong> (Code Server on Rivanna works) via <code>.vscode/mcp.json</code> — show a screenshot or transcript of VS Code calling one of your tools.</li>
+  <li><strong>Build</strong> — implement <code>my_server.py</code> so it exposes <strong>at least two working tools</strong> over MCP, one of which touches something sensitive (reads a file, queries data, renders a template). It must <strong>load in MCP Inspector</strong> — run <code>npx @modelcontextprotocol/inspector python my_server.py</code>, connect, and show a <strong>screenshot of Inspector listing your tools and the result of one tool call</strong>.</li>
   <li><strong>Break</strong> — plant <strong>exactly one</strong> vulnerability from the lab's taxonomy (description poisoning, path traversal, over-privileged tool, command/argument injection, or SSTI), and finish <code>attack_my_server.py</code> so it lands the exploit <em>through the MCP interface</em> — as a client calling the tool, not by calling your Python function directly.</li>
   <li><strong>Secure</strong> — commit <code>my_server_secure.py</code> where that bug is fixed (remove the dangerous capability, don't just block your one payload) and show <code>attack_my_server.py</code> now fails against it.</li>
 </ol>
-<p><strong>Submit:</strong> a link to your group's <strong>public GitHub repo</strong> containing the three Python files, the <code>.vscode/mcp.json</code>, and <strong><code>SERVER.md</code></strong> — what your server does, the VS Code setup steps, which vulnerability class you planted and why it's a realistic developer mistake, and the one-line root cause + fix. List every group member in the README.</p>
+<p><strong>Submit:</strong> a link to your group's <strong>public GitHub repo</strong> containing the three Python files and <strong><code>SERVER.md</code></strong> — what your server does, the MCP Inspector screenshot proving a tool call, which vulnerability class you planted and why it's a realistic developer mistake, and the one-line root cause + fix. List every group member in the README. <em>(Want a full LLM host instead? Claude Desktop or Cursor load the same server — but Inspector is all that's required.)</em></p>
 
 <h3>Rubric</h3>
 <table>
@@ -927,7 +934,7 @@ PASS · your bypass retrieved the planted credential (MEGACORP-FLAG-…).</pre>
     <tr><td>Proposed next-defense is concrete (implementable in &lt; 50 lines)</td><td style="text-align:right;">10</td></tr>
     <tr><td>Writeup correctly anticipates the new bypass the next defense creates</td><td style="text-align:right;">10</td></tr>
     <tr><td><strong>Part 2</strong> · public GitHub repo; server runs and exposes ≥2 working tools over MCP</td><td style="text-align:right;">10</td></tr>
-    <tr><td>Server loads in VS Code via <code>.vscode/mcp.json</code> — a tool call demonstrated</td><td style="text-align:right;">10</td></tr>
+    <tr><td>Server loads in MCP Inspector — a tool call demonstrated (screenshot)</td><td style="text-align:right;">10</td></tr>
     <tr><td>Planted vuln lands via <code>attack_my_server.py</code>; secure twin blocks it; <code>SERVER.md</code> names root cause + fix</td><td style="text-align:right;">15</td></tr>
     <tr><td>Optional · reverse shell via tickets-and-chr-encoding chain</td><td style="text-align:right;">+15</td></tr>
     <tr><td>Optional · a novel (not-covered-in-class) MCP attack, demonstrated</td><td style="text-align:right;">+15</td></tr>
@@ -951,7 +958,7 @@ PASS · your bypass retrieved the planted credential (MEGACORP-FLAG-…).</pre>
 <p>Lab 05 attacks agents at the application layer — the agent owns its tools in-process. Lab 07 attacks the tool layer beneath the agent — when the tools live in a separate server the agent talks to over MCP. The two attack surfaces overlap (prompt injection through tool descriptions; trust-boundary problems at the LLM/tool interface) but the deployment shape differs. Reading Lab 06 → Lab 07 after Lab 04 → Lab 05 covers both shapes.</p>
 
 <h3>Why deploy the real servers on Rivanna instead of just running them on my laptop?</h3>
-<p>So that "RCE" means something. On your laptop, code execution lands in your own shell and feels like a parlor trick. On Rivanna, the server is a <em>different machine you reached over the network</em> — when your <code>id</code> runs there and Stage C reports the compute node's hostname, you've demonstrated the actual thing an attacker wants: code execution on someone else's box. The SSH port-forward is the realistic delivery channel, and it's a transferable skill (you'll tunnel to bastion hosts constantly in real engagements).</p>
+<p>So that "RCE" means something. On your laptop, code execution lands in your own shell and feels like a parlor trick. On Rivanna, the server is a <em>different machine you reached over the network</em> — when your <code>id</code> runs there and Stage C reports the compute node's hostname, you've demonstrated the actual thing an attacker wants: code execution on someone else's box. Working entirely inside VS Code on the remote node — editing, running servers, and forwarding their ports to your browser — is itself the transferable skill: it's how real remote-dev and HPC work happens, and the same Ports panel you use here is what you'll reach for against any remote service.</p>
 
 <h3>What is supergateway and why do only two of the three servers need it?</h3>
 <p>MCP servers speak one of two transports. DVMCP uses <strong>SSE</strong> (MCP over an HTTP stream), so it already listens on a TCP port you can forward. The two git servers use <strong>stdio</strong> — the host launches them as a subprocess and talks over <code>stdin</code>/<code>stdout</code>, with no port at all. <code>supergateway</code> is a one-line bridge that runs a stdio MCP server and re-exposes it as SSE on a port, so it too can be forwarded. After wrapping, all three look identical to the client. (If you can't get Node on your node, <code>mcp-proxy</code> is a Python equivalent for the Python server.)</p>
@@ -960,7 +967,7 @@ PASS · your bypass retrieved the planted credential (MEGACORP-FLAG-…).</pre>
 <p>They're <em>blind</em>: <code>git_init</code> and <code>git_diff</code> don't echo your injected side effect back. So each script self-verifies through the server's <em>own</em> <code>git_status</code> tool — your injected <code>touch</code> / <code>--output</code> drops a file in the repo, and <code>git_status</code> then lists it as untracked. That's the same technique you'd use against a real blind injection: find a second tool whose output reflects the side effect. To <em>see</em> the payoff (e.g. captured <code>id</code> output), the script also writes it to a file you <code>cat</code> on the Rivanna side.</p>
 
 <h3>Are these the real CVEs — and is exploiting them legal?</h3>
-<p>Yes, these are the real, published vulnerabilities (CVE-2025-53107 in git-mcp-server; CVE-2025-68143/68144/68145 in Anthropic's <code>mcp-server-git</code>; DVMCP is purpose-built for training). You exploit them legally <strong>only against the intentionally-vulnerable, pinned-old version you deployed yourself</strong>, bound to localhost behind your tunnel. Both projects shipped fixes (<code>git-mcp-server</code> 2.1.5; <code>mcp-server-git</code> 2025.12.18) — running these exploits against anyone else's server, or any current production deployment, is unauthorized access under the CFAA. The whole point of pinning the old version is to study a closed hole safely.</p>
+<p>Yes, these are the real, published vulnerabilities (CVE-2025-53107 in git-mcp-server; CVE-2025-68143/68144/68145 in Anthropic's <code>mcp-server-git</code>; DVMCP is purpose-built for training). You exploit them legally <strong>only against the intentionally-vulnerable, pinned-old version you deployed yourself</strong>, bound to localhost on your own compute node. Both projects shipped fixes (<code>git-mcp-server</code> 2.1.5; <code>mcp-server-git</code> 2025.12.18) — running these exploits against anyone else's server, or any current production deployment, is unauthorized access under the CFAA. The whole point of pinning the old version is to study a closed hole safely.</p>
 
 <footer style="margin-top: 80px; padding-top: 20px; border-top: 1px solid var(--rule); color: var(--ink-mute); font-size: 13px;">
 DS 6042 · Lab 07 · Attacking MCP · 2026

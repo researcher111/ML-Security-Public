@@ -38,7 +38,7 @@ lab-07/
 │   └── 04_tool_chaining_ssti.py
 │
 ├── real-servers/                ← Part 2: real, CVE-bearing MCP servers (§7–§11)
-│   ├── RIVANNA.md               ← deploy + SSH port-forward runbook (read first)
+│   ├── RIVANNA.md               ← deploy + VS Code port-forward runbook (read first)
 │   ├── _mcp_sse.py              ← shared MCP-over-SSE client (official `mcp` SDK)
 │   ├── attack_dvmcp.py          ← §9 template — student writes the eval payload
 │   ├── attack_git_mcp.py        ← §10 template — student writes the inject payload
@@ -48,10 +48,9 @@ lab-07/
 │   ├── bypass.py                ← you finish bypass() to steal a credential
 │   └── test_bypass.py           ← autograder: plants a random canary, runs your bypass
 │
-├── assignment-build/            ← Part 2 (group): build your own MCP server for VS Code
+├── assignment-build/            ← Part 2 (group): build your own MCP server, test in MCP Inspector
 │   ├── my_server.py             ← server skeleton (FastMCP/stdio) — you finish it
 │   ├── attack_my_server.py      ← MCP client skeleton — you write the exploit
-│   ├── .vscode/mcp.json         ← registers the server in VS Code
 │   ├── notes/                   ← sample data read_note serves
 │   └── secret.txt               ← a file outside notes/ (traversal target)
 │
@@ -87,15 +86,15 @@ uvicorn server.secure_server:app --port 8081 --reload
 ## Part 2 — real vulnerable MCP servers (§7–§11)
 
 Three real, published, CVE-bearing MCP servers — including Anthropic's own
-reference implementation — deployed on Rivanna and attacked from your laptop
-over an SSH port-forward. Each attack ships as a template; you write the
-exploit payload.
+reference implementation — deployed on a Rivanna compute node and attacked from
+inside VS Code on that node (ports forwarded to your browser). Each attack ships
+as a template; you write the exploit payload.
 
 ```bash
-# full deploy + tunnel steps:
+# full deploy + port-forward steps:
 open real-servers/RIVANNA.md      # (or just read it)
 
-# after the servers are up and the tunnel is open, on your laptop:
+# after the servers are up, in a VS Code terminal on the node:
 pip install mcp
 python real-servers/attack_dvmcp.py                                    # §9
 python real-servers/attack_git_mcp.py     --url http://127.0.0.1:8090/sse --path /tmp/gitmcp_lab_repo   # §10

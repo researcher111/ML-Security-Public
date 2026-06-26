@@ -3,14 +3,11 @@
 Unlike the toy baseline_server (plain JSON-RPC over HTTP POST, see
 attacks/_helpers.py), the three *real* servers in this part of the lab speak
 the actual Model Context Protocol. We reach all three the same way — an MCP
-Server-Sent-Events endpoint at  <base>/sse  — forwarded from the Rivanna
-compute node to your laptop with
-
-    ssh -L <port>:localhost:<port>  <you>@rivanna.hpc.virginia.edu
-
-so the URL you point at is always http://127.0.0.1:<port>/sse on *your* side
-of the tunnel, even though the server (and any command it runs) lives on
-Rivanna. See RIVANNA.md for the deploy + port-forward steps.
+Server-Sent-Events endpoint at  <base>/sse. This script runs in a VS Code
+terminal on the *same* Rivanna compute node as the servers, so the URL you point
+at is simply http://127.0.0.1:<port>/sse — the server (and any command it runs)
+lives on that node, not your laptop. VS Code's Ports panel additionally forwards
+each port to your browser for viewing. See RIVANNA.md for the deploy steps.
 
   * DVMCP challenge 8 .......... speaks SSE natively (port 9008)
   * cyanheads/git-mcp-server ... stdio, wrapped by supergateway -> SSE
@@ -91,8 +88,8 @@ def run(coro) -> int:
     except BaseException as exc:  # noqa: BLE001 - we re-raise anything unexpected
         if _looks_like_connection_error(exc):
             print("\n!! could not reach the MCP server over SSE.")
-            print("   Check the server is running and your `ssh -L` tunnel is")
-            print("   open on the right port. See real-servers/RIVANNA.md.")
+            print("   Check the server is running on the right port, in a VS Code")
+            print("   terminal on this same node. See real-servers/RIVANNA.md.")
             return 2
         raise
 

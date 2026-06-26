@@ -1,34 +1,41 @@
 # Deploying the real vulnerable MCP servers on Rivanna
 
 This runbook stands up three **real**, **known-vulnerable** MCP servers on a
-Rivanna compute node and attacks them from your laptop over an SSH port-forward.
-It is written portably — fill in the placeholders (`<COMPUTING_ID>`,
-`<ALLOCATION>`, `<COMPUTE_NODE>`) with your own values.
+Rivanna compute node and attacks them from **inside VS Code on that node** (the
+OOD Code Server you launched in §1), using VS Code's built-in **port forwarding**
+to view them in your browser. It is written portably — fill in the placeholders
+(`<COMPUTING_ID>`, `<ALLOCATION>`, `<COMPUTE_NODE>`) with your own values.
 
 > **Why a remote target at all?** The toy `baseline_server.py` (§1–§6) runs on
 > your laptop, where "RCE" lands in your own shell. These three run on a *different
 > machine you reach over the network* — which is exactly the shape of a real
 > engagement, and which is why each exploit ends by printing the **server's**
-> hostname or dropping a file **on the server**. The tunnel is the whole point.
+> hostname or dropping a file **on the server**. Running the exploit on the remote
+> node, not your laptop, is the whole point.
 
 ---
 
 ## 0 · The shape of it
 
 ```
-  Rivanna compute node  <COMPUTE_NODE>                    your laptop
-  ┌───────────────────────────────────────┐              ┌────────────────────────┐
-  │ DVMCP challenge 8     ⟶  :9008 (SSE)   │              │  python real-servers/  │
-  │ git-mcp-server  ⟶ supergateway :8090   │◄─ ssh -L ───►│    attack_*.py         │
-  │ mcp-server-git  ⟶ supergateway :8091   │   (tunnel)   │  → http://127.0.0.1:.. │
-  └───────────────────────────────────────┘              └────────────────────────┘
+  Rivanna compute node <COMPUTE_NODE> — you are here, inside VS Code (OOD Code Server)
+  ┌──────────────────────────────────────────────────────────────────────────┐
+  │ DVMCP challenge 8   ⟶  :9008 (SSE)                                         │
+  │ git-mcp-server  ⟶ supergateway :8090       VS Code "Ports" panel           │
+  │ mcp-server-git  ⟶ supergateway :8091       auto-forwards 9008/8090/8091    │
+  │                                            → ood.hpc.virginia.edu/…/proxy/ │
+  │ python real-servers/attack_*.py            <port>/  (open in your browser) │
+  │   → http://127.0.0.1:<port>  (same node)   private to your OOD session     │
+  └──────────────────────────────────────────────────────────────────────────┘
 ```
 
 All three speak the **same** MCP-over-SSE contract once they are up, so the one
 client in `real-servers/_mcp_sse.py` drives all three. DVMCP serves SSE natively;
 the two git servers are **stdio** servers wrapped by **supergateway** (a tiny
 "run an MCP stdio server over SSE" bridge), which exposes the identical `/sse`
-endpoint on a port you can forward.
+endpoint on a port VS Code can forward. Because your attack scripts run in a VS
+Code terminal **on the same node**, they reach the servers at `127.0.0.1:<port>`
+directly; the Ports panel is only for *viewing* a server from your browser.
 
 | Server | CVE | Language | Native transport | Port (after wrap) |
 |---|---|---|---|---|
@@ -44,13 +51,17 @@ endpoint on a port you can forward.
 
 ## 1 · Get a compute node and load toolchains
 
-Don't run servers on the shared **login** node. Grab an interactive allocation
+Don't run servers on the shared **login** node. The easiest path is the one this
+lab already uses: the **OOD Code Server** session (Interactive partition) *is* VS
+Code running on a compute node — its terminal is already on `<COMPUTE_NODE>`, so
+you can skip the manual allocation below and just open terminals there. If you'd
+rather work from a plain SSH shell, grab an interactive allocation instead
 (syntax varies by site; this is the Slurm shape):
 
 ```bash
 ssh <COMPUTING_ID>@rivanna.hpc.virginia.edu
 salloc -A <ALLOCATION> -p standard -c 2 -t 2:00:00      # → drops you on <COMPUTE_NODE>
-hostname                                                # note this — you'll need it for the tunnel
+hostname                                                # confirm which compute node you're on
 ```
 
 Load Python and Node (module names vary — `module spider python node` to discover):
@@ -97,11 +108,12 @@ python challenges/hard/challenge8/server_sse.py        # binds 0.0.0.0:9008
 > **Security note — the bind address.** `server_sse.py` hard-codes
 > `host="0.0.0.0"`, which exposes this *deliberately vulnerable* server to every
 > other user on the compute node. On a shared node, either (a) confirm your node
-> is single-tenant, or (b) edit the last line to `host="127.0.0.1"` and rely on
-> the SSH tunnel. Never leave a `0.0.0.0` DVMCP running unattended.
+> is single-tenant, or (b) edit the last line to `host="127.0.0.1"` and let VS
+> Code forward the port privately to you. Never leave a `0.0.0.0` DVMCP running
+> unattended.
 
-Leave it running. Open a second shell on the same node (`ssh <COMPUTING_ID>@<COMPUTE_NODE>`)
-for the next servers.
+Leave it running. Open a second VS Code terminal on the same node
+(**Terminal → New Terminal**, or split the panel) for the next servers.
 
 ---
 
@@ -128,8 +140,9 @@ python -m venv ~/anthropic-git/.venv && source ~/anthropic-git/.venv/bin/activat
 pip install "mcp-server-git==2025.11.25"
 
 # the git_diff argument-injection needs a REAL repo to diff. Use an ABSOLUTE
-# path under /tmp (NOT ~/...): the attack sends this path over MCP to the
-# server, and ~ would be expanded by your laptop's shell, not the server's.
+# path under /tmp (NOT ~/...): the attack sends this path literally over MCP and
+# the server resolves it against its own working directory, so a relative or
+# ~-prefixed path can land somewhere unexpected. An absolute path is unambiguous.
 mkdir -p /tmp/anthropic_lab_repo && cd /tmp/anthropic_lab_repo
 git init -q . && git config user.email lab@uva && git config user.name lab
 echo "v1" > notes.txt && git add notes.txt && git commit -qm init
@@ -151,37 +164,32 @@ npx -y supergateway --host 127.0.0.1 --port 8091 --stdio "python -m mcp_server_g
 
 ---
 
-## 5 · Forward the ports to your laptop
+## 5 · Forward the ports with VS Code (optional — for browser viewing)
 
-In a **new terminal on your laptop**, open one SSH tunnel for all three ports.
+You do **not** need to forward anything for the attacks to work: your scripts run
+in a VS Code terminal on the same node and reach the servers at `127.0.0.1`
+already. Forwarding is only to *see* a server in your laptop browser.
 
-**If the servers run on the login node:**
-```bash
-ssh -N \
-  -L 9008:localhost:9008 \
-  -L 8090:localhost:8090 \
-  -L 8091:localhost:8091 \
-  <COMPUTING_ID>@rivanna.hpc.virginia.edu
-```
+VS Code does it automatically: as each server binds its port, VS Code detects it
+and adds it to the **Ports** panel with an `ood.hpc.virginia.edu/…/proxy/<port>/`
+URL that's private to your OOD session. To open the panel:
 
-**If they run on a compute node** (the usual case — `salloc` put you on
-`<COMPUTE_NODE>`), jump through the login node:
-```bash
-ssh -N -J <COMPUTING_ID>@rivanna.hpc.virginia.edu \
-  -L 9008:localhost:9008 \
-  -L 8090:localhost:8090 \
-  -L 8091:localhost:8091 \
-  <COMPUTING_ID>@<COMPUTE_NODE>
-```
+- **View → Open View… → Ports**, or the Command Palette
+  (<kbd>Ctrl/Cmd</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd> → *Ports: Focus on Ports View*).
+- If a port isn't auto-detected, click **Forward a Port** and type it
+  (`9008`, `8090`, `8091`).
+- Click the globe/URL next to a port to open it in your browser. A green dot
+  means the port has a live listener.
 
-`-N` = "just forward, don't open a shell." Leave it running; `Ctrl-C` closes the
-tunnel.
+There is no `ssh -L`, no jump host, and nothing to leave running on your laptop.
 
 ---
 
-## 6 · Attack from your laptop
+## 6 · Attack from a VS Code terminal on the node
 
-In your lab checkout (a normal laptop venv with `pip install mcp`):
+Open another VS Code terminal (still on `<COMPUTE_NODE>`) in your lab checkout.
+The scripts and the servers are on the same machine, so they talk over
+`127.0.0.1`:
 
 ```bash
 cd Class/labs/lab-07
@@ -232,17 +240,19 @@ when the marker file fails to appear.
 
 ## 8 · Teardown
 
-`Ctrl-C` the tunnel on your laptop, then on Rivanna stop the servers
-(`Ctrl-C` each, or `pkill -f supergateway; pkill -f server_sse.py`) and
-`exit` the `salloc` allocation so you're not holding the node.
+Stop the servers in their VS Code terminals (`Ctrl-C` each, or
+`pkill -f supergateway; pkill -f server_sse.py`). VS Code drops the forwarded
+ports automatically when the listeners die. Then end your OOD Code Server session
+(or `exit` the `salloc` allocation) so you're not holding the node.
 
 ---
 
 ## Authorized use
 
 Same rule as the rest of the lab: **you attack only servers you started
-yourself.** These are intentionally vulnerable — bind them to `127.0.0.1`, keep
-them behind your tunnel, and tear them down when you're done. Do not point them
+yourself.** These are intentionally vulnerable — bind them to `127.0.0.1`, let
+VS Code forward them privately to your own session, and tear them down when
+you're done. Do not point them
 at, or run them against, any shared UVA service, any classmate's node, or
 anything on the public internet. Coordinate with HPC staff if you're unsure
 whether your node is shared.

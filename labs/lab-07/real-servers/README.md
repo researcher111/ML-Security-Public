@@ -2,7 +2,8 @@
 
 §1–§6 of the lab attack a *toy* server we wrote (`../server/baseline_server.py`).
 This folder attacks three **real, published, CVE-bearing** MCP servers, deployed
-on Rivanna and reached from your laptop over an SSH port-forward. The point is to
+on a Rivanna compute node and attacked from inside VS Code on that node (with
+their ports forwarded to your browser). The point is to
 see that the bug classes you practiced on the toy are the *same* ones that shipped
 in real software — including Anthropic's own reference implementation.
 
@@ -34,8 +35,9 @@ real-servers/
 
 ## Quick start
 
-1. Deploy the servers on Rivanna and open the tunnel — **`RIVANNA.md`**.
-2. On your laptop: `pip install mcp` in a venv.
+1. Deploy the servers on a Rivanna compute node — **`RIVANNA.md`**. VS Code
+   auto-forwards their ports (see the **Ports** panel); no SSH tunnel needed.
+2. In a VS Code terminal on the node: `pip install mcp` in a venv.
 3. Open a template, fill in the `# YOUR JOB` payload, run it. Success = the
    script's self-verify stage confirms code ran / a file was written **on the
    server**.
@@ -47,6 +49,7 @@ answers are in `../solution/real-servers/`.
 
 ## Authorized use
 
-Intentionally vulnerable software. Run it bound to `127.0.0.1` behind your own
-SSH tunnel, attack only the instance you started, tear it down when done. See the
+Intentionally vulnerable software. Run it bound to `127.0.0.1` and let VS Code
+forward the port privately to your own session, attack only the instance you
+started, tear it down when done. See the
 authorized-use note in `RIVANNA.md` and the lab page.
