@@ -37,7 +37,6 @@
       <li><a href="#iam-chain">7 · Attack chain · Azure managed identity</a></li>
       <li><a href="#practices">8 · Best practices</a></li>
       <li><a href="#antipatterns">9 · Anti-patterns</a></li>
-      <li><a href="#assignment">Assignment</a></li>
       <li><a href="#faq">FAQ</a></li>
     </ul>
   </nav>
@@ -289,7 +288,7 @@ The promise of a managed cloud platform — Google's Vertex AI, Microsoft's Azur
   <p><strong>One wrinkle:</strong> a pure trial subscription sometimes can't create serverless (pay-as-you-go) deployments until a payment method is on file — your credit still pays the bill. If <code>az ml serverless-endpoint create</code> is rejected, add a card or fall back to managed compute (below). Either way, the endpoint, agent, and audit steps are identical.</p>
 </div>
 
-<h3>5.1 Install the CLI, sign in, and pick the right subscription</h3>
+<h3>5.1 Set up your Azure subscription (CLI, a paid plan, and a budget)</h3>
 <p>Create the account in the browser once (<a href="https://azure.microsoft.com/free/students/">Azure for Students</a> — $100, no card, verified with your <code>@virginia.edu</code> address), then do everything else from the terminal.</p>
 
 <p><strong>Install the Azure CLI</strong> if you don't have <code>az</code> yet:</p>
@@ -315,6 +314,38 @@ Name                State    User
 ------------------  -------  ------------------
 Azure for Students  Enabled  you@virginia.edu</pre>
 
+<div class="viz">
+  <div class="viz-title">Portal reference · All services → Subscriptions</div>
+  <div class="viz-description">
+    The same list, in the portal. Three columns matter: the <strong>name</strong>, the <strong>Subscription ID</strong> (the GUID — treat it as sensitive; it's blurred here), and <strong>My role</strong>. Deploy into the one where your role is <strong>Owner</strong> (green). Never deploy into a <em>production</em> subscription you only have limited access to (red).
+  </div>
+  <svg viewBox="0 0 720 200" style="display:block;width:100%;max-width:720px;height:auto;margin:4px auto;background:#fff;border:1px solid var(--rule);border-radius:6px;font-family:system-ui,-apple-system,'Segoe UI',sans-serif" aria-label="Azure portal Subscriptions list, illustrative, IDs redacted">
+    <rect x="0" y="0" width="720" height="28" fill="#0078d4"/>
+    <text x="14" y="18" fill="#fff" font-size="12" font-weight="700">Microsoft Azure</text>
+    <text x="14" y="48" fill="#666" font-size="11">All services  ›  Subscriptions</text>
+    <text x="14" y="72" fill="#1f1d1a" font-size="19" font-weight="700">Subscriptions</text>
+    <text x="24" y="104" fill="#333" font-size="11" font-weight="700">Subscription name</text>
+    <text x="230" y="104" fill="#333" font-size="11" font-weight="700">Subscription ID</text>
+    <text x="470" y="104" fill="#333" font-size="11" font-weight="700">My role</text>
+    <text x="600" y="104" fill="#333" font-size="11" font-weight="700">Current cost</text>
+    <line x1="14" y1="112" x2="706" y2="112" stroke="#e0ddd3"/>
+    <rect x="14" y="118" width="692" height="34" fill="#eef7f0"/>
+    <rect x="14" y="118" width="4" height="34" fill="#5a8a6f"/>
+    <text x="24" y="139" fill="#0067b8" font-size="12" font-weight="600">Azure for Students</text>
+    <text x="230" y="139" fill="#555" font-size="11" font-family="ui-monospace,SFMono-Regular,monospace">••••••••-••••-••••-••••••••••••</text>
+    <text x="470" y="139" fill="#1f1d1a" font-size="11">Owner</text>
+    <text x="600" y="139" fill="#1f1d1a" font-size="11">$0.00</text>
+    <text x="660" y="139" fill="#3f6b52" font-size="10" font-weight="700">← use this</text>
+    <rect x="14" y="156" width="692" height="34" fill="#fbecea"/>
+    <rect x="14" y="156" width="4" height="34" fill="#c0392b"/>
+    <text x="24" y="177" fill="#0067b8" font-size="12" font-weight="600">UVA-ITS-EICM-PROD</text>
+    <text x="230" y="177" fill="#555" font-size="11" font-family="ui-monospace,SFMono-Regular,monospace">••••••••-••••-••••-••••••••••••</text>
+    <text x="470" y="177" fill="#1f1d1a" font-size="11">Resource access</text>
+    <text x="600" y="177" fill="#c0392b" font-size="11">Unauthorized</text>
+    <text x="660" y="177" fill="#c0392b" font-size="10" font-weight="700">← never</text>
+  </svg>
+</div>
+
 <details class="callout note">
   <summary class="label">Gotcha we hit testing this lab · "Enabled" locally ≠ usable</summary>
   <p><code>az account list</code> reads a <em>cached</em> list and can report a subscription as <code>Enabled</code> even after it has expired or been deactivated — and Azure for Students disables the subscription once the $100 or the 12 months runs out. Your first resource command then fails with <code>SubscriptionNotFound</code>. Verify the subscription is actually live at the control plane <em>before</em> you rely on it:</p>
@@ -327,6 +358,85 @@ az group list -o table</code></pre>
 <pre><code class="language-bash">az account list --refresh -o table    # re-pulls the list using your current token
 </code></pre>
 </details>
+
+<p><strong>Get onto a paid plan.</strong> A pay-as-you-go subscription lifts the student rate limit and enables serverless deployments. Create one from <em>Subscriptions → + Add</em>: the wizard's <strong>Basics</strong> tab picks your billing account and the <strong>Microsoft Azure Plan</strong>, and its <strong>Budget</strong> tab caps spend in the same flow.</p>
+
+<div class="viz">
+  <div class="viz-title">Portal reference · Subscriptions → + Add → Create a subscription (Basics)</div>
+  <div class="viz-description">The billing-account, billing-profile, and invoice-section identifiers are sensitive — blur them if you screenshot this. The <strong>Plan</strong> must read <strong>Microsoft Azure Plan</strong>.</div>
+  <svg viewBox="0 0 720 296" style="display:block;width:100%;max-width:720px;height:auto;margin:4px auto;background:#fff;border:1px solid var(--rule);border-radius:6px;font-family:system-ui,-apple-system,'Segoe UI',sans-serif" aria-label="Create a subscription Basics tab, illustrative, billing IDs redacted">
+    <rect x="0" y="0" width="720" height="28" fill="#0078d4"/>
+    <text x="14" y="18" fill="#fff" font-size="12" font-weight="700">Microsoft Azure</text>
+    <text x="14" y="52" fill="#1f1d1a" font-size="18" font-weight="700">Create a subscription</text>
+    <text x="14" y="80" fill="#0067b8" font-size="12" font-weight="700">Basics</text>
+    <line x1="12" y1="86" x2="56" y2="86" stroke="#0067b8" stroke-width="2"/>
+    <text x="70" y="80" fill="#666" font-size="12">Advanced</text>
+    <text x="150" y="80" fill="#666" font-size="12">Budget</text>
+    <text x="212" y="80" fill="#666" font-size="12">Tags</text>
+    <text x="256" y="80" fill="#666" font-size="12">Review + create</text>
+    <line x1="12" y1="92" x2="706" y2="92" stroke="#e0ddd3"/>
+    <text x="14" y="114" fill="#1f1d1a" font-size="12" font-weight="700">Subscription details</text>
+    <text x="14" y="144" fill="#333" font-size="11.5">Subscription name *</text>
+    <rect x="300" y="128" width="406" height="24" fill="#fff" stroke="#8a8577"/>
+    <text x="310" y="144" fill="#1f1d1a" font-size="11">ds-payg</text>
+    <text x="14" y="178" fill="#333" font-size="11.5">Billing account *</text>
+    <rect x="300" y="162" width="406" height="24" fill="#fff" stroke="#8a8577"/>
+    <text x="310" y="178" fill="#1f1d1a" font-size="11">Your name (••••••••-••••-••••-••••)</text>
+    <text x="694" y="178" fill="#555" font-size="11" text-anchor="end">▾</text>
+    <text x="40" y="212" fill="#333" font-size="11.5">Billing profile *</text>
+    <rect x="300" y="196" width="406" height="24" fill="#fff" stroke="#8a44a0"/>
+    <text x="310" y="212" fill="#1f1d1a" font-size="11">Your name (••••-••••-•••-•••)</text>
+    <text x="694" y="212" fill="#555" font-size="11" text-anchor="end">▾</text>
+    <text x="66" y="246" fill="#333" font-size="11.5">Invoice section *</text>
+    <rect x="300" y="230" width="406" height="24" fill="#fff" stroke="#8a8577"/>
+    <text x="310" y="246" fill="#1f1d1a" font-size="11">Your name (••••-••••-•••-•••)</text>
+    <text x="694" y="246" fill="#555" font-size="11" text-anchor="end">▾</text>
+    <text x="14" y="280" fill="#333" font-size="11.5">Plan *</text>
+    <rect x="300" y="264" width="406" height="24" fill="#fff" stroke="#8a8577"/>
+    <text x="310" y="280" fill="#1f1d1a" font-size="11">Microsoft Azure Plan</text>
+    <text x="694" y="280" fill="#555" font-size="11" text-anchor="end">▾</text>
+  </svg>
+</div>
+
+<div class="viz">
+  <div class="viz-title">Portal reference · Create a subscription (Budget tab)</div>
+  <div class="viz-description">Set the budget in the same wizard. A budget <em>alerts</em> at your threshold; it does <strong>not</strong> hard-stop spending — so pair it with a prepaid card whose balance is the real ceiling.</div>
+  <svg viewBox="0 0 720 250" style="display:block;width:100%;max-width:720px;height:auto;margin:4px auto;background:#fff;border:1px solid var(--rule);border-radius:6px;font-family:system-ui,-apple-system,'Segoe UI',sans-serif" aria-label="Create a subscription Budget tab, illustrative">
+    <rect x="0" y="0" width="720" height="28" fill="#0078d4"/>
+    <text x="14" y="18" fill="#fff" font-size="12" font-weight="700">Microsoft Azure</text>
+    <text x="14" y="52" fill="#1f1d1a" font-size="18" font-weight="700">Create a subscription</text>
+    <text x="14" y="80" fill="#666" font-size="12">Basics</text>
+    <text x="60" y="80" fill="#666" font-size="12">Advanced</text>
+    <text x="140" y="80" fill="#0067b8" font-size="12" font-weight="700">Budget</text>
+    <line x1="138" y1="86" x2="184" y2="86" stroke="#0067b8" stroke-width="2"/>
+    <text x="200" y="80" fill="#666" font-size="12">Tags</text>
+    <text x="244" y="80" fill="#666" font-size="12">Review + create</text>
+    <line x1="12" y1="92" x2="706" y2="92" stroke="#e0ddd3"/>
+    <text x="14" y="114" fill="#1f1d1a" font-size="12" font-weight="700">Budget details</text>
+    <text x="14" y="132" fill="#555" font-size="11">Create a budget for this subscription.</text>
+    <text x="14" y="164" fill="#333" font-size="11.5">Name</text>
+    <rect x="300" y="148" width="406" height="24" fill="#fff" stroke="#8a8577"/>
+    <text x="310" y="164" fill="#1f1d1a" font-size="11">ds-course</text>
+    <text x="14" y="198" fill="#333" font-size="11.5">Amount (in USD)</text>
+    <rect x="300" y="182" width="406" height="24" fill="#fff" stroke="#8a8577"/>
+    <text x="310" y="198" fill="#1f1d1a" font-size="11">25</text>
+    <text x="14" y="232" fill="#333" font-size="11.5">Alert condition</text>
+    <text x="300" y="232" fill="#1f1d1a" font-size="11">Send alert when</text>
+    <rect x="404" y="220" width="46" height="24" fill="#fff" stroke="#8a8577"/>
+    <text x="414" y="236" fill="#1f1d1a" font-size="11">100</text>
+    <text x="458" y="232" fill="#1f1d1a" font-size="11">% of the amount has been crossed (emailed to you)</text>
+  </svg>
+</div>
+
+<div class="callout note">
+  <span class="label">Lifting the student rate limit · set a budget, then add a payment method</span>
+  <p>A free <strong>Azure for Students</strong> subscription keeps a <em>spending limit</em> on (you can't exceed the $100 credit — it just stops) and, as a side effect, gets low serverless rate limits and can't create pay-as-you-go serverless deployments. Both are why the §5.4 smoke test may keep returning <code>429</code>. To lift them, convert the subscription to <strong>pay-as-you-go</strong> by adding a payment method — in this order:</p>
+  <ol>
+    <li><strong>Set a budget first.</strong> Portal → <a href="https://portal.azure.com/#view/Microsoft_Azure_CostManagement/Menu/~/budgets">Cost Management → Budgets → + Add</a>; scope it to your subscription, set an amount (e.g. $20) and email alerts at 50 / 80 / 100 %. A budget <em>alerts</em> — it does not hard-stop spending — so treat it as an early warning, not a cap.</li>
+    <li><strong>Add a payment method to go pay-as-you-go.</strong> Portal → <em>Subscriptions → (your subscription) → Payment methods</em>, or the "remove spending limit / upgrade" prompt. A <strong>prepaid Visa is the safe choice for a lab</strong>: its balance <em>is</em> a hard ceiling — Azure can never charge more than what's loaded on the card. Your $100 credit is still spent first, so the card only comes into play after the credit runs out.</li>
+  </ol>
+  <p>Once you're pay-as-you-go, the rate limit relaxes and <code>az ml serverless-endpoint create</code> works. <strong>Tear the endpoint and resource group down when you're done (§5.7)</strong> so nothing keeps drawing on the card, and keep an eye on the budget alerts — a reasoning model driven by an agent can spend faster than you expect.</p>
+</div>
 
 <p>That <code>user.name</code> is your <span class="gloss" data-gloss="entra-id">Entra ID</span> — the same identity that will authorize the deployment, own the endpoint's keys, and appear in every audit-log line. This is <em>workload/user identity, not a static key</em>: principle #3 and #6 of the NSA list, satisfied before you deploy anything.</p>
 
@@ -793,41 +903,6 @@ deepseek-ai/DeepSeek-R1</pre>
 </div>
 
 <!-- ============================================================ -->
-<h2 id="assignment">Assignment · deploy + peer pen-test</h2>
-
-<p>Ship a hardened cloud deployment, then have a classmate try to break it.</p>
-
-<h3>What you ship</h3>
-<ol>
-  <li>The DeepSeek-R1 + dcode setup from §5 deployed on Azure — an open-weights model from the Foundry catalog behind a key-authenticated endpoint, driven by the local agent.</li>
-  <li>The deployment must satisfy the NSA seven principles: encrypted at rest/in-transit (Key Vault CMK, TLS), authenticated (Entra managed identity / endpoint key), private networking (Private Endpoints + VNet/NSG), audit logging to a queryable warehouse (Log Analytics), content filtering (Content Safety + your Lab 11 classifier), RBAC least-privilege, and a documented threat model.</li>
-  <li>Everything as code: Bicep or Terraform (azurerm). The grader will deploy your repo into a fresh resource group.</li>
-</ol>
-
-<h3>What you submit</h3>
-<ol>
-  <li><strong>GitHub repo</strong> with all the Terraform / infrastructure-as-code (IaC) + the app code.</li>
-  <li><strong>Threat model</strong> — 1–2 pages, Markdown. Use STRIDE from <a href="../lab-12/server.html#assignment">Lab 12</a>'s framework, applied to cloud-managed inference.</li>
-  <li><strong>NSA-checklist mapping</strong> — one row per principle, what you did for each, with a code reference.</li>
-  <li><strong>Peer pen-test report</strong> — a classmate runs Lab 10's agentic pentest against your deployment (with explicit scope-statement authorization from you), submits a report of what they found. <em>You do the same for them.</em></li>
-  <li><strong>Your remediation</strong> — the diff you applied in response to their findings.</li>
-</ol>
-
-<h3>Rubric</h3>
-<table>
-  <thead><tr><th>criterion</th><th style="text-align:right;">points</th></tr></thead>
-  <tbody>
-    <tr><td>Deployment works end-to-end · IaC apply produces a key-authed endpoint the agent can drive</td><td style="text-align:right;">20</td></tr>
-    <tr><td>All seven NSA principles satisfied with code references</td><td style="text-align:right;">25</td></tr>
-    <tr><td>Threat model is honest and specific to <em>cloud-managed</em> inference</td><td style="text-align:right;">15</td></tr>
-    <tr><td>Peer pen-test was real (you let them attack, they had time, they wrote a report)</td><td style="text-align:right;">15</td></tr>
-    <tr><td>Remediations reflect a real understanding of what they found</td><td style="text-align:right;">15</td></tr>
-    <tr><td>IaC is reproducible, IAM is least-privilege</td><td style="text-align:right;">10</td></tr>
-    <tr><td><strong>Total</strong></td><td style="text-align:right;"><strong>100</strong></td></tr>
-  </tbody>
-</table>
-
-<!-- ============================================================ -->
 <h2 id="faq">FAQ</h2>
 
 <h3>Why Azure for this lab?</h3>
@@ -847,9 +922,6 @@ deepseek-ai/DeepSeek-R1</pre>
 
 <h3>Does this work with Claude / Gemini / GPT directly (no open-weights)?</h3>
 <p>Yes. Replace §5.3 with a managed-model API call (no GPU SKU, no Marketplace subscription). Everything else — Entra auth, content safety, audit logs, the dcode wiring, the threat model — is identical. The shared-responsibility line in the try-it widget shifts to the "SaaS API" position, but the layers you own are the same.</p>
-
-<h3>How do I get my classmate to pen-test me?</h3>
-<p>The instructor will pair students in week N+1. Until then, you can pen-test your own deployment using the Lab 10 toolchain pointed at your own URL — the agentic pentest produces real findings even against your own infrastructure.</p>
 
 <footer>
 DS 6042 — Lab 13 · cloud-managed deployment, NSA-aligned. Lab style codified in <code>CLAUDE.md</code>. NSA guidance is U.S. government work in the public domain.
