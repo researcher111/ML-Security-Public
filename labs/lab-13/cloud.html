@@ -99,7 +99,7 @@ The promise of a managed cloud platform — Google's Vertex AI, Microsoft's Azur
   <li><strong>Vertex AI</strong> — Google's managed machine-learning (ML) platform (Model Garden, endpoints, agent builder). <a href="https://cloud.google.com/vertex-ai/docs">cloud.google.com/vertex-ai</a>.</li>
   <li><strong>Azure AI Foundry</strong> — Microsoft's umbrella platform (was Azure ML + Azure OpenAI + Cognitive Services). <a href="https://learn.microsoft.com/azure/ai-studio/">learn.microsoft.com/azure/ai-studio</a>.</li>
   <li><strong>AWS Bedrock + SageMaker</strong> — Amazon's managed-model service + ML platform. <a href="https://docs.aws.amazon.com/bedrock/">docs.aws.amazon.com/bedrock</a>.</li>
-  <li><strong>Azure for Students</strong> — $100 credit, no credit card, verified with your <code>@virginia.edu</code> address. This is the account the hands-on uses. <a href="https://azure.microsoft.com/free/students/">azure.microsoft.com/free/students</a>.</li>
+  <li><strong>A paid Azure subscription</strong> — pay-as-you-go, set up with a payment method and a spend budget. A <strong>prepaid debit card</strong> is ideal for a lab: its loaded balance is a hard ceiling Azure can never exceed. This is the account the hands-on uses. <a href="https://azure.microsoft.com/pricing/purchase-options/pay-as-you-go/">azure.microsoft.com/…/pay-as-you-go</a>.</li>
   <li><strong>DeepSeek-R1</strong> — DeepSeek's MIT-licensed open-weights frontier model: strong at code, supports tool-calling (so agents can drive it), and hosted on Azure as a <em>sold-by-Azure</em> serverless offer — the cleanest CLI deploy. <a href="https://api-docs.deepseek.com">deepseek.com</a> · <a href="https://huggingface.co/deepseek-ai">weights on Hugging Face</a>.</li>
   <li><strong>Deep Agents Code (<code>dcode</code>)</strong> — LangChain's open-source terminal coding agent, built on the <code>deepagents</code> software development kit (SDK). <a href="https://docs.langchain.com/oss/python/deepagents/code/overview">docs.langchain.com/…/deepagents/code</a>.</li>
 </ul>
@@ -153,7 +153,7 @@ The promise of a managed cloud platform — Google's Vertex AI, Microsoft's Azur
     <tr><td>Audit logging</td><td>Azure Monitor + Log Analytics (<span class="gloss" data-gloss="kql">KQL</span>, Kusto Query Language)</td><td>Diagnostic settings, retention, alerts</td></tr>
     <tr><td>Output safety filter</td><td>Azure AI Content Safety</td><td>On by default; tune categories/thresholds</td></tr>
     <tr><td>Threat detection</td><td>Microsoft Defender for Cloud</td><td>Enable plans; triage findings</td></tr>
-    <tr><td>Student credit</td><td>Azure for Students</td><td>$100, no card, <code>@virginia.edu</code> verified</td></tr>
+    <tr><td>Account &amp; billing</td><td>Pay-as-you-go subscription + Cost Management budget</td><td>Prepaid debit card = hard ceiling; budget alerts</td></tr>
   </tbody>
 </table>
 
@@ -272,24 +272,24 @@ The promise of a managed cloud platform — Google's Vertex AI, Microsoft's Azur
 <details class="setup-details" open>
   <summary>Prerequisites — open by default; collapse if your environment is ready.</summary>
   <ul>
-    <li><a href="https://azure.microsoft.com/free/students/">Azure for Students</a> account ($100 credit, no card, <code>@virginia.edu</code> verified) — or any subscription with a payment method.</li>
+    <li>A <strong>paid Azure subscription</strong> (pay-as-you-go) with a payment method on file — a <strong>prepaid debit card</strong> is ideal for a lab — and a <a href="https://portal.azure.com/#view/Microsoft_Azure_CostManagement/Menu/~/budgets">budget</a> set.</li>
     <li><a href="https://learn.microsoft.com/cli/azure/install-azure-cli">Azure CLI</a> (<code>az</code>) 2.70+ and the <code>ml</code> extension (<code>az extension add -n ml</code>).</li>
     <li>Python 3.11+ for the <code>deepagents</code> SDK path.</li>
   </ul>
 </details>
 
 <div class="callout note keep-in-present">
-  <span class="label">Tested on macOS · your $100 budget and how to make it last</span>
-  <p>Your $100 credit is the budget; the only question is <em>billing shape</em>:</p>
+  <span class="label">Tested on macOS · your budget and how to make it last</span>
+  <p>The balance you load on the prepaid card — reinforced by the spend budget you set — is your ceiling; the only question is <em>billing shape</em>:</p>
   <ul>
-    <li><strong>Serverless — pay per token.</strong> You're billed only for what the agent generates, so a coding agent can run against it for weeks on $100. <em>Prefer this.</em></li>
-    <li><strong>Managed compute — pay per hour.</strong> A GPU VM bills whether or not anyone is using it, so it burns the credit fast unless you <strong>scale it to zero</strong> — drop its running instance count to 0 (or just delete the deployment) so no GPU is billing while you're not using it.</li>
+    <li><strong>Serverless — pay per token.</strong> You're billed only for what the agent generates, so a coding agent can run against it for weeks on a small balance. <em>Prefer this.</em></li>
+    <li><strong>Managed compute — pay per hour.</strong> A GPU VM bills whether or not anyone is using it, so it burns the balance fast unless you <strong>scale it to zero</strong> — drop its running instance count to 0 (or just delete the deployment) so no GPU is billing while you're not using it.</li>
   </ul>
-  <p><strong>One wrinkle:</strong> a pure trial subscription sometimes can't create serverless (pay-as-you-go) deployments until a payment method is on file — your credit still pays the bill. If <code>az ml serverless-endpoint create</code> is rejected, add a card or fall back to managed compute (below). Either way, the endpoint, agent, and audit steps are identical.</p>
+  <p><strong>One wrinkle:</strong> a brand-new subscription occasionally needs a few minutes after the card is added before it will create serverless (pay-as-you-go) deployments. If <code>az ml serverless-endpoint create</code> is rejected at first, wait and retry or fall back to managed compute (below). Either way, the endpoint, agent, and audit steps are identical.</p>
 </div>
 
 <h3>5.1 Set up your Azure subscription (CLI, a paid plan, and a budget)</h3>
-<p>Create the account in the browser once (<a href="https://azure.microsoft.com/free/students/">Azure for Students</a> — $100, no card, verified with your <code>@virginia.edu</code> address), then do everything else from the terminal.</p>
+<p>Create the subscription in the browser once — a <strong>pay-as-you-go</strong> plan with a <strong>prepaid debit card</strong> as the payment method and a <strong>budget</strong> set (both covered below) — then do everything else from the terminal.</p>
 
 <p><strong>Install the Azure CLI</strong> if you don't have <code>az</code> yet:</p>
 <ul>
@@ -305,14 +305,14 @@ az version                        # azure-cli 2.70+ recommended</code></pre>
 <pre><code class="language-bash">az login                          # opens a browser → Microsoft Entra ID sign-in
 az login --use-device-code        # headless / remote alternative</code></pre>
 
-<p><strong>Pick — and verify — the subscription.</strong> You very likely have more than one (a university or personal subscription <em>and</em> Azure for Students). List them, set the one you intend to spend on <em>by name or id</em>, and confirm you landed on it:</p>
+<p><strong>Pick — and verify — the subscription.</strong> You may have more than one (a university or personal subscription <em>and</em> your lab subscription). List them, set the one you intend to spend on <em>by name or id</em>, and confirm you landed on it:</p>
 <pre><code class="language-bash">az account list -o table                              # every subscription you can see
-az account set --subscription "Azure for Students"    # or: --subscription &lt;id&gt;
+az account set --subscription "DS6042 Lab"            # or: --subscription &lt;id&gt;
 az account show --query "{name:name, state:state, user:user.name}" -o table</code></pre>
 <pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">az account show --query "{name:name, state:state, user:user.name}" -o table</span>
-Name                State    User
-------------------  -------  ------------------
-Azure for Students  Enabled  you@virginia.edu</pre>
+Name         State    User
+-----------  -------  ------------------
+DS6042 Lab   Enabled  you@virginia.edu</pre>
 
 <div class="viz">
   <div class="viz-title">Portal reference · All services → Subscriptions</div>
@@ -331,7 +331,7 @@ Azure for Students  Enabled  you@virginia.edu</pre>
     <line x1="14" y1="112" x2="706" y2="112" stroke="#e0ddd3"/>
     <rect x="14" y="118" width="692" height="34" fill="#eef7f0"/>
     <rect x="14" y="118" width="4" height="34" fill="#5a8a6f"/>
-    <text x="24" y="139" fill="#0067b8" font-size="12" font-weight="600">Azure for Students</text>
+    <text x="24" y="139" fill="#0067b8" font-size="12" font-weight="600">DS6042 Lab</text>
     <text x="230" y="139" fill="#555" font-size="11" font-family="ui-monospace,SFMono-Regular,monospace">••••••••-••••-••••-••••••••••••</text>
     <text x="470" y="139" fill="#1f1d1a" font-size="11">Owner</text>
     <text x="600" y="139" fill="#1f1d1a" font-size="11">$0.00</text>
@@ -348,18 +348,18 @@ Azure for Students  Enabled  you@virginia.edu</pre>
 
 <details class="callout note">
   <summary class="label">Gotcha we hit testing this lab · "Enabled" locally ≠ usable</summary>
-  <p><code>az account list</code> reads a <em>cached</em> list and can report a subscription as <code>Enabled</code> even after it has expired or been deactivated — and Azure for Students disables the subscription once the $100 or the 12 months runs out. Your first resource command then fails with <code>SubscriptionNotFound</code>. Verify the subscription is actually live at the control plane <em>before</em> you rely on it:</p>
+  <p><code>az account list</code> reads a <em>cached</em> list and can report a subscription as <code>Enabled</code> even after it has been disabled — and a subscription is disabled if its payment method fails or a spending limit is hit (a prepaid card drained to $0 stops it cold). Your first resource command then fails with <code>SubscriptionNotFound</code>. Verify the subscription is actually live at the control plane <em>before</em> you rely on it:</p>
 <pre><code class="language-bash"># authoritative check — does Azure Resource Manager (ARM) actually return this subscription?
 az account subscription list --query "[].{name:displayName, state:state}" -o table
 # simplest smoke test — can you list resource groups in it?
 az group list -o table</code></pre>
-  <p>If the subscription shows <code>Enabled</code> in <code>az account list</code> but is <em>missing</em> from <code>az account subscription list</code> (or <code>az group list</code> errors with <code>SubscriptionNotFound</code>), it's expired — renew it on the <a href="https://azure.microsoft.com/free/students/">students page</a> or switch to another with <code>az account set</code>. And check the <em>name</em> in <code>az account show</code> every time: it is easy to be dropped onto a shared <strong>production</strong> subscription by default and deploy lab resources into it by accident.</p>
+  <p>If the subscription shows <code>Enabled</code> in <code>az account list</code> but is <em>missing</em> from <code>az account subscription list</code> (or <code>az group list</code> errors with <code>SubscriptionNotFound</code>), it's disabled — top up the prepaid card / fix the payment method, or switch to another with <code>az account set</code>. And check the <em>name</em> in <code>az account show</code> every time: it is easy to be dropped onto a shared <strong>production</strong> subscription by default and deploy lab resources into it by accident.</p>
   <p>The cache is stale in <em>both</em> directions: a subscription you just created (or that was just shared with you) can be <em>missing</em> from <code>az account list</code> even though it's live. Force a refresh instead of re-logging in:</p>
 <pre><code class="language-bash">az account list --refresh -o table    # re-pulls the list using your current token
 </code></pre>
 </details>
 
-<p><strong>Get onto a paid plan.</strong> A pay-as-you-go subscription lifts the student rate limit and enables serverless deployments. Create one from <em>Subscriptions → + Add</em>: the wizard's <strong>Basics</strong> tab picks your billing account and the <strong>Microsoft Azure Plan</strong>, and its <strong>Budget</strong> tab caps spend in the same flow.</p>
+<p><strong>Create the pay-as-you-go subscription.</strong> If you don't have one yet, add it from <em>Subscriptions → + Add</em>: the wizard's <strong>Basics</strong> tab picks your billing account and the <strong>Microsoft Azure Plan</strong>, you attach your <strong>prepaid debit card</strong> as the payment method, and its <strong>Budget</strong> tab sets a spend alert in the same flow. Pay-as-you-go is what enables serverless deployments and lifts the low default rate limits.</p>
 
 <div class="viz">
   <div class="viz-title">Portal reference · Subscriptions → + Add → Create a subscription (Basics)</div>
@@ -429,13 +429,13 @@ az group list -o table</code></pre>
 </div>
 
 <div class="callout note">
-  <span class="label">Lifting the student rate limit · set a budget, then add a payment method</span>
-  <p>A free <strong>Azure for Students</strong> subscription keeps a <em>spending limit</em> on (you can't exceed the $100 credit — it just stops) and, as a side effect, gets low serverless rate limits and can't create pay-as-you-go serverless deployments. Both are why the §5.4 smoke test may keep returning <code>429</code>. To lift them, convert the subscription to <strong>pay-as-you-go</strong> by adding a payment method — in this order:</p>
+  <span class="label">Why pay-as-you-go + a prepaid card · the budget alerts, the card is the real ceiling</span>
+  <p>A brand-new or spending-limited subscription gets low serverless rate limits and can't create pay-as-you-go serverless deployments — which is why the §5.4 smoke test may keep returning <code>429</code>. Being on <strong>pay-as-you-go</strong> (which you set up in §5.1) is what relaxes the limit and lets <code>az ml serverless-endpoint create</code> work. Two controls keep the spend safe, and they do different jobs:</p>
   <ol>
-    <li><strong>Set a budget first.</strong> Portal → <a href="https://portal.azure.com/#view/Microsoft_Azure_CostManagement/Menu/~/budgets">Cost Management → Budgets → + Add</a>; scope it to your subscription, set an amount (e.g. $20) and email alerts at 50 / 80 / 100 %. A budget <em>alerts</em> — it does not hard-stop spending — so treat it as an early warning, not a cap.</li>
-    <li><strong>Add a payment method to go pay-as-you-go.</strong> Portal → <em>Subscriptions → (your subscription) → Payment methods</em>, or the "remove spending limit / upgrade" prompt. A <strong>prepaid Visa is the safe choice for a lab</strong>: its balance <em>is</em> a hard ceiling — Azure can never charge more than what's loaded on the card. Your $100 credit is still spent first, so the card only comes into play after the credit runs out.</li>
+    <li><strong>The budget alerts.</strong> Portal → <a href="https://portal.azure.com/#view/Microsoft_Azure_CostManagement/Menu/~/budgets">Cost Management → Budgets → + Add</a>; scope it to your subscription, set an amount (e.g. $20) and email alerts at 50 / 80 / 100 %. A budget <em>alerts</em> — it does not hard-stop spending — so treat it as an early warning, not a cap.</li>
+    <li><strong>The prepaid card is the hard ceiling.</strong> A <strong>prepaid debit card is the safe choice for a lab</strong>: its loaded balance <em>is</em> a hard ceiling — Azure can never charge more than what's on the card. That's the real cap the budget can't give you.</li>
   </ol>
-  <p>Once you're pay-as-you-go, the rate limit relaxes and <code>az ml serverless-endpoint create</code> works. <strong>Tear the endpoint and resource group down when you're done (§5.7)</strong> so nothing keeps drawing on the card, and keep an eye on the budget alerts — a reasoning model driven by an agent can spend faster than you expect.</p>
+  <p><strong>Tear the endpoint and resource group down when you're done (§5.7)</strong> so nothing keeps drawing on the card, and keep an eye on the budget alerts — a reasoning model driven by an agent can spend faster than you expect.</p>
 </div>
 
 <p>That <code>user.name</code> is your <span class="gloss" data-gloss="entra-id">Entra ID</span> — the same identity that will authorize the deployment, own the endpoint's keys, and appear in every audit-log line. This is <em>workload/user identity, not a static key</em>: principle #3 and #6 of the NSA list, satisfied before you deploy anything.</p>
@@ -486,7 +486,7 @@ az configure --defaults group=ds6042-lab13 workspace=ds6042-foundry location=eas
   <ul>
     <li><strong><code>MissingSubscriptionRegistration</code></strong> on a fresh subscription — the providers above aren't registered by default. Register them once per subscription and wait for <code>Registered</code> before creating the workspace.</li>
     <li><strong>The workspace create takes ~3-5 minutes</strong> and provisions four dependencies you'll see appear in the resource group: a storage account, a Key Vault, Application Insights, and (later, on demand) a container registry. That's expected, not a bug.</li>
-    <li><strong>Region matters — twice.</strong> First, not every region offers serverless DeepSeek-R1; <code>eastus2</code> is a safe default, and if §5.3 says the model isn't available, recreate the workspace in a <a href="https://learn.microsoft.com/azure/ai-foundry/how-to/deploy-models-serverless-availability">supported region</a>. Second, <strong>Azure for Students pins you to specific regions</strong> via an "allowed locations" Azure Policy — so <code>az group create -l eastus2</code> can fail with <code>RequestDisallowedByPolicy</code> if eastus2 isn't one of yours. See (and confirm) which regions you're allowed in <strong>Policy → <a href="https://portal.azure.com/#view/Microsoft_Azure_Policy/PolicyMenuBlade/~/Assignments">Assignments</a></strong>, then pick a region that is <em>both</em> policy-allowed and offers the model.</li>
+    <li><strong>Region matters — twice.</strong> First, not every region offers serverless DeepSeek-R1; <code>eastus2</code> is a safe default, and if §5.3 says the model isn't available, recreate the workspace in a <a href="https://learn.microsoft.com/azure/ai-foundry/how-to/deploy-models-serverless-availability">supported region</a>. Second, your subscription or organization may <strong>restrict regions</strong> via an "allowed locations" Azure Policy — so <code>az group create -l eastus2</code> can fail with <code>RequestDisallowedByPolicy</code> if eastus2 isn't allowed. See (and confirm) which regions you're allowed in <strong>Policy → <a href="https://portal.azure.com/#view/Microsoft_Azure_Policy/PolicyMenuBlade/~/Assignments">Assignments</a></strong>, then pick a region that is <em>both</em> policy-allowed and offers the model.</li>
   </ul>
 </div>
 
@@ -906,13 +906,13 @@ deepseek-ai/DeepSeek-R1</pre>
 <h2 id="faq">FAQ</h2>
 
 <h3>Why Azure for this lab?</h3>
-<p>Because UVA students get an <a href="https://azure.microsoft.com/free/students/">Azure for Students</a> credit with no card, and Foundry has the deepest enterprise-identity integration (Entra) — which makes the identity and RBAC lessons concrete. Vertex and Bedrock are operationally equivalent for this material; if your credit is elsewhere, the concepts in §2 transfer, but the exact CLI commands won't. Learn one cloud in depth here.</p>
+<p>Because Azure AI Foundry has the deepest enterprise-identity integration (Entra) — which makes the identity and RBAC lessons concrete — and it deploys DeepSeek-R1 serverless straight from the CLI. Vertex and Bedrock are operationally equivalent for this material; if your account is elsewhere, the concepts in §2 transfer, but the exact CLI commands won't. Learn one cloud in depth here.</p>
 
 <h3>What if my team is on-prem only?</h3>
 <p>Same patterns, different primitives: replace Identity-Aware Proxy (IAP) with OpenID Connect (OIDC) + an authenticating reverse proxy, replace IAM with Kerberos/RBAC, replace BigQuery with Splunk/Elastic. The seven NSA principles all apply.</p>
 
 <h3>What's the cheapest production-realistic deployment?</h3>
-<p>Azure Foundry serverless DeepSeek-R1 (pay-per-token, no VM to keep running) behind the default content filter, audited to Log Analytics. If you're on student credit and can't use serverless, managed compute on the smallest GPU SKU works — just scale it to zero or delete the endpoint the moment you're done, or the running VM quietly burns your $100.</p>
+<p>Azure Foundry serverless DeepSeek-R1 (pay-per-token, no VM to keep running) behind the default content filter, audited to Log Analytics. If your subscription can't use serverless yet, managed compute on the smallest GPU SKU works — just scale it to zero or delete the endpoint the moment you're done, or the running VM quietly burns your budget.</p>
 
 <h3>Is DeepSeek-R1 really deployable from the CLI?</h3>
 <p>Yes — we deployed it end-to-end while writing this lab. Its Model ID resolves in the <code>azureml-deepseek</code> registry, and it's <em>sold by Azure</em>, so <code>az ml serverless-endpoint create</code> stands up a key-authed endpoint with no Marketplace subscription step. The one variable is region: serverless availability differs by region (a sibling model, DeepSeek-V3.1, returned <code>ServerlessModelNotAvailable</code> in our region while R1 deployed cleanly). If create reports the model unavailable, recreate the workspace in a <a href="https://learn.microsoft.com/azure/ai-foundry/how-to/deploy-models-serverless-availability">supported region</a> or use managed compute. Want a different model? Any serverless catalog entry works — swap the <code>model_id</code>; the agent and audit wiring are identical.</p>
@@ -930,6 +930,6 @@ DS 6042 — Lab 13 · cloud-managed deployment, NSA-aligned. Lab style codified 
 </main>
 
 <script src="../_shared/lab-base.js?v=6"></script>
-<script src="viz.js?v=9"></script>
+<script src="viz.js?v=10"></script>
 </body>
 </html>

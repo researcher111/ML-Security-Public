@@ -525,7 +525,7 @@
         title: 'managed compute',
         body:
           '<p>The other way to deploy a catalog model: Azure spins up a dedicated <strong>GPU virtual machine</strong> in your workspace and runs the model on it. You get the same OpenAI-compatible endpoint + key, but you pay for the VM <em>by the hour</em> as long as it exists — idle or busy — and you need GPU quota approved on the subscription.</p>' +
-          '<p>Use it when a model isn\'t offered <em>serverless</em> in your region, or when steady high volume makes a fixed hourly rate cheaper than per-token. The catch students hit: forgetting to scale it to zero or delete it, which quietly burns the whole credit overnight.</p>',
+          '<p>Use it when a model isn\'t offered <em>serverless</em> in your region, or when steady high volume makes a fixed hourly rate cheaper than per-token. The catch people hit: forgetting to scale it to zero or delete it, which quietly burns your whole budget overnight.</p>',
       },
       'resource-group': {
         title: 'resource group',
