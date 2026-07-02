@@ -395,6 +395,23 @@
   })();
 
   // ============================================================
+  // Widget · macOS / Windows code tabs
+  // ============================================================
+  (function initCodetabs() {
+    document.querySelectorAll('.codetabs').forEach(function (box) {
+      const btns = box.querySelectorAll('.codetab-btn');
+      const panels = box.querySelectorAll('.codetab-panel');
+      btns.forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          const os = btn.getAttribute('data-os');
+          btns.forEach(b => b.classList.toggle('active', b === btn));
+          panels.forEach(p => { p.hidden = p.getAttribute('data-os') !== os; });
+        });
+      });
+    });
+  })();
+
+  // ============================================================
   // Widget 2 · Inline glossary
   // ============================================================
   (function initGlossary() {

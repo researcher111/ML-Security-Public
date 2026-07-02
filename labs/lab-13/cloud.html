@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>lab 13 — Secure deployment in the cloud</title>
 <link rel="stylesheet" href="../_shared/lab-base.css?v=6">
-<link rel="stylesheet" href="styles.css?v=3">
+<link rel="stylesheet" href="styles.css?v=4">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism.min.css">
 <script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-core.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-bash.min.js"></script>
@@ -332,7 +332,12 @@ az group list -o table</code></pre>
 
 <h3>5.2 Stand up the Foundry project</h3>
 <p>A Foundry project is an Azure ML workspace with a model catalog attached. Create the <span class="gloss" data-gloss="resource-group">resource group</span>, register the resource providers a brand-new subscription needs, create the workspace, then set CLI defaults so later commands don't repeat them.</p>
-<pre><code class="language-bash">az extension add -n ml                # once; 'az extension update -n ml' to refresh
+<div class="codetabs">
+  <div class="codetab-bar">
+    <button type="button" class="codetab-btn active" data-os="mac">macOS / Linux</button>
+    <button type="button" class="codetab-btn" data-os="win">Windows (PowerShell)</button>
+  </div>
+  <div class="codetab-panel" data-os="mac"><pre><code class="language-bash">az extension add -n ml                # once; 'az extension update -n ml' to refresh
 az group create -n ds6042-lab13 -l eastus2
 
 # On a NEW subscription these providers start unregistered. Register them first, or
@@ -347,7 +352,24 @@ az provider show -n Microsoft.MachineLearningServices --query registrationState 
 az ml workspace create -n ds6042-foundry -g ds6042-lab13 -l eastus2   # ~3-5 min
 
 # make these the defaults for every 'az ml' command below
-az configure --defaults group=ds6042-lab13 workspace=ds6042-foundry location=eastus2</code></pre>
+az configure --defaults group=ds6042-lab13 workspace=ds6042-foundry location=eastus2</code></pre></div>
+  <div class="codetab-panel" data-os="win" hidden><pre><code class="language-powershell">az extension add -n ml                # once; 'az extension update -n ml' to refresh
+az group create -n ds6042-lab13 -l eastus2
+
+# On a NEW subscription these providers start unregistered. Register them first, or
+# 'az ml workspace create' fails with MissingSubscriptionRegistration.
+$providers = "Microsoft.MachineLearningServices","Microsoft.Storage","Microsoft.KeyVault",
+             "Microsoft.ContainerRegistry","Microsoft.Insights","Microsoft.CognitiveServices"
+foreach ($ns in $providers) { az provider register --namespace $ns }
+
+# registration is async (1-3 min); wait until this prints 'Registered':
+az provider show -n Microsoft.MachineLearningServices --query registrationState -o tsv
+
+az ml workspace create -n ds6042-foundry -g ds6042-lab13 -l eastus2   # ~3-5 min
+
+# make these the defaults for every 'az ml' command below
+az configure --defaults group=ds6042-lab13 workspace=ds6042-foundry location=eastus2</code></pre></div>
+</div>
 
 <div class="callout note">
   <span class="label">Predictable snags in §5.2 (we hit all three while testing)</span>
@@ -420,6 +442,7 @@ echo "endpoint: $DEEPSEEK_ENDPOINT"     # sanity check → https://…models.ai.
     <li><strong>Don't guess the hostname.</strong> Paste the exact <em>Target URI</em> from <code>get-credentials</code> into <code>DEEPSEEK_ENDPOINT</code> — the region and the random suffix vary per deployment; the value above is only illustrative.</li>
     <li><strong>Two route conventions.</strong> If <code>/v1/chat/completions</code> returns 404, the deployment is exposing the native Azure route instead — call <code>$DEEPSEEK_ENDPOINT/chat/completions?api-version=2024-05-01-preview</code> with the same bearer key. Both speak the same request/response shape; OpenAI client libraries default to the <code>/v1</code> form.</li>
     <li><strong>401/403</strong> means the key didn't ride along — check the <code>Authorization: Bearer</code> header, not <code>api-key</code> (Azure OpenAI resources use <code>api-key</code>; serverless model endpoints use <code>Authorization: Bearer</code>).</li>
+    <li><strong>429 · <code>Rate Limit ... exceeded</code></strong> is capacity, not your code — the auth worked (or you'd get 401). Serverless "sold by Azure" models run on <em>shared</em> capacity with a per-minute request/token cap, so a just-created endpoint or a busy region can 429 even on the first call. It's retryable: wait ~30–60 s and run it again, or add backoff (the dcode/SDK client already retries). If it persists, request a quota increase, or deploy to <strong>managed compute</strong> for dedicated capacity with no shared rate limit.</li>
   </ul>
 </div>
 <div class="callout note">
@@ -835,6 +858,6 @@ DS 6042 — Lab 13 · cloud-managed deployment, NSA-aligned. Lab style codified 
 </main>
 
 <script src="../_shared/lab-base.js?v=6"></script>
-<script src="viz.js?v=8"></script>
+<script src="viz.js?v=9"></script>
 </body>
 </html>
