@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>microRAG — a guided walkthrough · DS 6042 Lab 14</title>
 <link rel="stylesheet" href="../_shared/lab-base.css?v=6">
-<link rel="stylesheet" href="styles.css?v=5">
+<link rel="stylesheet" href="styles.css?v=6">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism.min.css">
 <script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-core.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-bash.min.js"></script>
@@ -31,6 +31,7 @@
       <li><a href="#scaling-up">4 · Scaling up · the production server</a></li>
       <li><a href="#whats-next">5 · What's next · the attacks</a></li>
       <li><a href="#production">6 · Wrapping up · production-grade RAG</a></li>
+      <li><a href="#grounding">7 · Grounding checks · NLI</a></li>
       <li><a href="#assignment">Assignment</a></li>
       <li><a href="#faq">FAQ</a></li>
     </ul>
@@ -605,6 +606,44 @@ If you're locked out, contact the helpdesk at extension 4357 [source: password_p
 </div>
 
 <!-- ============================================================ -->
+<h2 id="grounding">7 · Is the answer grounded? · NLI verification <span class="time-tag">~15 min</span></h2>
+
+<p>Retrieval can pull the perfect chunks and the LLM can <em>still</em> lie. Step 4's system prompt <em>asks</em> the model to use only the retrieved context, but nothing <em>enforces</em> it — the model can blend in a plausible fact from its training data, or quietly contradict the source. The assignment's grounding gate checks the <em>retrieval</em> side ("did we find anything relevant?"). This section checks the <strong>answer</strong> side: does each sentence the model wrote actually follow from a retrieved chunk? The production tool for that job is an <span class="gloss" data-gloss="nli">NLI</span> model.</p>
+
+<div class="callout tps">
+  <span class="label">Think · Pair · Share · catching a hallucination</span>
+  <ul class="tps-steps">
+    <li><span class="tps-phase">Think · 2 min</span>You have the retrieved chunks and the LLM's answer, side by side. You want an automatic check that flags any sentence the chunks don't support — <em>without</em> paying for a second LLM call. On your own, describe the comparison you'd run between each answer sentence and the chunks, and how many distinct outcomes it needs to return.</li>
+  </ul>
+  <details class="tps-reveal">
+    <summary>I've done the Think step — reveal Pair &amp; Share</summary>
+    <ul class="tps-steps">
+      <li><span class="tps-phase">Pair · 3 min</span>Compare. Did one of you land on "does chunk X <em>entail</em> sentence Y?" — a three-way judgment (supports / says nothing / contradicts) rather than a yes/no? That three-way judgment is exactly what an NLI model is trained to make.</li>
+      <li><span class="tps-phase">Share · 2 min</span>As a table, write the rule: a sentence is <em>grounded</em> only if ___ of the retrieved chunks ___ it. Then check your rule against the widget below.</li>
+    </ul>
+  </details>
+</div>
+
+<h3>What NLI does</h3>
+<p><span class="gloss" data-gloss="nli">Natural Language Inference</span> takes two short texts — a <strong>premise</strong> and a <strong>hypothesis</strong> — and returns one of three labels: the premise <strong>entails</strong> the hypothesis (if the premise holds, the hypothesis must too), <strong>contradicts</strong> it, or is <strong>neutral</strong> (the premise neither proves nor disproves it). It's a small, fast, decades-old NLP task that modern encoder models do very well.</p>
+<p>Wiring it into RAG is one idea: <strong>premise = a retrieved chunk, hypothesis = one sentence of the answer.</strong> A sentence is <em>grounded</em> if at least one retrieved chunk entails it. If every chunk comes back <em>neutral</em>, the model made the sentence up — it's in the answer but supported by nothing you retrieved. If a chunk <em>contradicts</em> it, worse: the model misread its own source. Either way, flag it — drop the sentence, refuse the answer, or attach a "low-confidence" warning.</p>
+
+<div class="viz" id="viz-nli">
+  <div class="viz-title">Widget · answer-grounding check · <code>pick a sentence</code></div>
+  <div class="viz-description">On the left, the retrieved context (the premises). Pick a candidate answer sentence on the right (the hypothesis); the check finds the chunk that best supports it and returns the NLI verdict — <strong>entails</strong>, <strong>neutral</strong>, or <strong>contradicts</strong> — plus whether the sentence is grounded or flagged. Two of the four are hallucinations a fluent LLM might slip in.</div>
+</div>
+<p class="viz-caption">Grounded ≠ true, though: if a <em>poisoned</em> chunk (Lab 15 §3, ingestion poisoning) entails the sentence, NLI happily marks it grounded. NLI checks the answer against the corpus — it can't check the corpus.</p>
+
+<h3>The models, and the cost</h3>
+<p>The workhorses are small encoders fine-tuned on NLI data — <code>DeBERTa-v3</code> or <code>RoBERTa</code> trained on MNLI, or purpose-built ones like Vectara's <code>hallucination_evaluation_model</code>. They're a few hundred million parameters, run in tens of milliseconds on CPU, and cost a rounding error next to the generation call. The alternative — <strong>LLM-as-judge</strong>, asking a big model "is this sentence supported by that context?" — is more flexible but adds a second full LLM call per answer, which is slower and far pricier at scale. That's why the §6 pipeline uses a dedicated NLI step rather than a second LLM.</p>
+
+<div class="exercise">
+  <span class="exercise-q">Try it · two grounding checks, one system</span>
+  <p>The assignment's grounding gate refuses when <em>retrieval</em> finds nothing relevant; this NLI check flags when the <em>answer</em> drifts from what was retrieved. Name one failure each catches that the other misses.</p>
+  <details><summary>Show answer</summary><div>The <strong>retrieval gate</strong> catches out-of-scope questions — it refuses before the LLM ever runs, stopping "a confident answer to a question we have no documents for." But it's blind to what the model does <em>with</em> good chunks: strong retrieval can still be followed by a hallucinated answer. The <strong>NLI check</strong> catches exactly that — an answer sentence unsupported by (or contradicting) the retrieved chunks — but it's useless when retrieval returned nothing worth entailing against. They're complementary: gate the input, verify the output.</div></details>
+</div>
+
+<!-- ============================================================ -->
 <h2 id="assignment">Assignment · harden the retriever <span class="time-tag">~90 min · autograded</span></h2>
 
 <p>microRAG's retriever always returns <em>something</em> — the least-bad guess even for a question the corpus can't answer — and it lets one multi-chunk document dominate the whole top-K. Both are real weaknesses (the §2.3 edge-case exercise and the Lab 15 §4 attack). You'll fix them by implementing <strong>one function</strong>, <code>rank(query)</code>, in a template that already contains a working microRAG retriever over a small bundled corpus.</p>
@@ -700,7 +739,7 @@ DS 6042 · Lab 14 · microRAG guided walkthrough. Companion attacks lab: <a href
 </main>
 
 <script src="../_shared/lab-base.js?v=6"></script>
-<script src="viz.js?v=10"></script>
+<script src="viz.js?v=11"></script>
 
 </body>
 </html>
