@@ -253,22 +253,25 @@ def llm_chat(messages: list[dict]) -> str:
                         continue
                     payload = line[len("data: "):].strip()
                     if payload == "[DONE]":
-                        return "".join(out).strip()
+                        break
                     try:
                         delta = json.loads(payload)["choices"][0]["delta"]
                     except (json.JSONDecodeError, KeyError, IndexError):
                         continue
                     if delta.get("content"):
                         out.append(delta["content"])
-            # Stream ended without an explicit [DONE]; use what we collected.
-            if out:
-                return "".join(out).strip()
-            last_err = RuntimeError("stream closed with no content")
+            text = "".join(out).strip()
+            if text:
+                return text
+            # Stream finished but produced no answer — the model spent its whole
+            # budget on reasoning, or emptily refused. Retry for a real answer.
+            last_err = RuntimeError("model returned no content (reasoning-only or truncated)")
         except httpx.RemoteProtocolError as e:
             # Gateway dropped the connection. Keep partial content if any arrived;
             # otherwise it was a first-byte-timeout drop — retry for a new slot.
-            if out:
-                return "".join(out).strip()
+            text = "".join(out).strip()
+            if text:
+                return text
             last_err = e
         time.sleep(1)
     raise RuntimeError(
