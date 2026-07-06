@@ -97,24 +97,29 @@ RAG attacks exploit the same trust-boundary problem as the agent attacks in Lab 
 <!-- ============================================================ -->
 <h2 id="setup">1 · Stand up the baseline server <span class="time-tag">~10 min</span></h2>
 
-<p>Pull the code straight from the lab site and unzip it — or grab the <a class="inline-dl" href="lab-15-code.zip" download>↓ lab-15-code.zip</a> button above:</p>
+<p>Pull the code straight from the lab site and unzip it — or click the <a class="inline-dl" href="lab-15-code.zip" download>↓ lab-15-code.zip</a> link to download:</p>
 
 <pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">mkdir -p Class/labs/lab-15 &amp;&amp; cd Class/labs/lab-15</span>
 <span class="term-comment">$</span> <span class="term-cmd">wget https://researcher111.github.io/ML-Security-Public/labs/lab-15/lab-15-code.zip</span>
 <span class="term-comment">$</span> <span class="term-cmd">unzip lab-15-code.zip</span>        <span class="term-comment"># -&gt; server/  attacks/  data/  README.md</span>
 <span class="term-comment">$</span> <span class="term-cmd">python3 -m venv .venv && source .venv/bin/activate</span>
 <span class="term-comment">$</span> <span class="term-cmd">pip install -r server/requirements.txt</span>
-<span class="term-comment">$</span> <span class="term-cmd">export LLM_BASE_URL=... LLM_API_KEY=... LLM_MODEL=...</span>
+<span class="term-comment">$</span> <span class="term-cmd">export LLM_BASE_URL=https://open-webui.rc.virginia.edu/api</span>
+<span class="term-comment">$</span> <span class="term-cmd">export LLM_API_KEY=...</span>      <span class="term-comment"># from open-webui.rc.virginia.edu → Settings → Account</span>
+<span class="term-comment">$</span> <span class="term-cmd">export LLM_MODEL="Kimi K2.5"</span>
 <span class="term-comment">$</span> <span class="term-cmd">uvicorn server.baseline_rag:app --port 8090 --reload</span>
 INFO:     Application startup complete.
 INFO:     Uvicorn running on http://127.0.0.1:8090
+<span class="term-comment"># uvicorn keeps running in this terminal — open a NEW terminal for the check below</span>
 <span class="term-comment">$</span> <span class="term-cmd">curl -s http://127.0.0.1:8090/health</span>
 {"status":"healthy","agent":"baseline-rag","chunks":11}</pre>
+
+<p>The three <code>LLM_</code> values come from the UVA RC GenAI service — the same portal, key, and model id you set up in <a href="../lab-04/microagent.html#setup">Lab 04</a>. If you still have that <code>.env</code>, reuse the same three values; otherwise sign in to the <a href="https://open-webui.rc.virginia.edu/">RC GenAI portal</a> with NetBadge, generate a key under <strong>Settings → Account → API keys</strong>, and use the exact Kimi model id shown in the model picker (<code>Kimi K2.5</code>).</p>
 
 <!-- ============================================================ -->
 <h2 id="attack-1">2 · Attack 1 · Knowledge-base leakage <span class="time-tag">~15 min</span></h2>
 
-<p>MITRE ATLAS <strong>T0024</strong> — Exfiltration via ML Inference API. The seed corpus contains everything: hostnames, service-account passwords, AWS keys. The LLM faithfully surfaces them through "normal" retrieval. There is no policy preventing the model from quoting its source verbatim.</p>
+<p>MITRE ATLAS <strong>T0024</strong> — Exfiltration via ML Inference API. The seed corpus contains everything: hostnames, service-account passwords, AWS keys. Ask a plausible question and the retriever ranks a secret-bearing chunk into the top-K context; the LLM, instructed to answer only from that context, quotes it back verbatim. No jailbreak, no injection — the leak is the retrieval pipeline working exactly as designed, with no policy stopping the model from repeating what it was handed.</p>
 
 <div class="callout tps">
   <span class="label">Think · Pair · Share · is a query an attack?</span>
@@ -169,6 +174,11 @@ AWS IAM: EXAMPLE-aws-key-000
 
 ✓ ATTACK SUCCEEDED — knowledge-base chunks contained the secrets verbatim;
   the LLM faithfully surfaced them through 'normal' retrieval.</pre>
+
+<div class="callout note">
+  <span class="label">be patient — the model is slow</span>
+  <p>Our Kimi K2.5 deployment on the RC GenAI service is not the fastest, so a multi-stage script like this can take <strong>a couple of minutes</strong> to finish — each stage is a separate LLM call, and the first one is slowest while the model warms up. A long pause with no output is normal; it isn't a hang.</p>
+</div>
 
 <div class="exercise">
   <span class="exercise-q">Try it · find the password-policy default</span>

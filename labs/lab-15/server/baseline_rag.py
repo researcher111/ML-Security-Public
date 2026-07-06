@@ -23,6 +23,7 @@ Run:
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 import os
 import re
@@ -213,18 +214,35 @@ def output_guard(text: str) -> str:
 # === LLM CLIENT =============================================================
 
 def llm_chat(messages: list[dict]) -> str:
+    # The RC GenAI endpoint streams Server-Sent Events even for one-shot calls;
+    # a plain buffered read hits "incomplete chunked read", so we request a
+    # stream and stitch the assistant's content deltas together.
     url = os.environ["LLM_BASE_URL"].rstrip("/") + "/chat/completions"
     body = {
         "model": os.environ["LLM_MODEL"],
         "messages": messages,
         "temperature": 0.2,
         "max_tokens": 700,
+        "stream": True,
     }
-    r = httpx.post(url,
+    out = []
+    with httpx.stream("POST", url,
         headers={"Authorization": f"Bearer {os.environ['LLM_API_KEY']}"},
-        json=body, timeout=60)
-    r.raise_for_status()
-    return r.json()["choices"][0]["message"]["content"]
+        json=body, timeout=120) as r:
+        r.raise_for_status()
+        for line in r.iter_lines():
+            if not line.startswith("data: "):
+                continue
+            payload = line[len("data: "):].strip()
+            if payload == "[DONE]":
+                break
+            try:
+                delta = json.loads(payload)["choices"][0]["delta"]
+            except (json.JSONDecodeError, KeyError, IndexError):
+                continue
+            if delta.get("content"):
+                out.append(delta["content"])
+    return "".join(out).strip()
 
 
 # === PROMPT ASSEMBLY ========================================================

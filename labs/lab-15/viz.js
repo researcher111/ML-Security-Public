@@ -78,7 +78,7 @@
       kb: {
         num: '1', name: 'Knowledge-base leakage', mitre: 'T0024',
         where: 'ingest', short: 'corpus indexed verbatim',
-        body: 'The seed corpus contains real production secrets (it_inventory.md). The LLM faithfully surfaces them through normal retrieval. There is no DLP, no sensitivity label, no auth-gated retrieval.',
+        body: 'The seed corpus contains real production secrets (it_inventory.md). A normal query ranks a secret-bearing chunk into context, and the LLM — told to answer only from that context — quotes it back verbatim. There is no DLP, no sensitivity label, no auth-gated retrieval.',
         code: `# baseline_rag.py · lines 159-170
 def seed_from_disk() -> None:
     for p in sorted(DATA.rglob("*")):
