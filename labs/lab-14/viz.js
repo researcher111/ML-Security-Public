@@ -947,6 +947,61 @@ messages[1] · user
   }
 
   /* ============================================================ */
+  /* Widget 7 · NLI answer-grounding check                        */
+  /* ============================================================ */
+  function initNLI() {
+    const root = document.getElementById('viz-nli');
+    if (!root) return;
+
+    const V = {
+      entails:     { t: 'ENTAILS',     c: '#3f8a5f' },
+      neutral:     { t: 'NEUTRAL',     c: '#6b6456' },
+      contradicts: { t: 'CONTRADICTS', c: '#c0392b' },
+    };
+    const CTX = [
+      { id: 'password_policy.md#0', text: 'To reset your MegaCorpAI password, open the login page, click "Need help signing in", then authenticate with Okta Verify (preferred) or the SMS fallback.' },
+      { id: 'password_policy.md#1', text: 'Passwords rotate every 90 days. Choose a passphrase of at least sixteen characters, including one symbol and one number.' },
+      { id: 'onboarding.md#0',      text: 'New hires complete orientation during their first week and request a laptop and badge from IT.' },
+    ];
+    const SENT = [
+      { text: 'To reset your password, open the login page and authenticate with Okta Verify.', premise: 'password_policy.md#0', verdict: 'entails',     reason: 'Chunk 0 states exactly this — the sentence is fully supported by a retrieved chunk.' },
+      { text: 'If you get locked out, call the IT helpdesk at extension 4357.',                 premise: null,                verdict: 'neutral',     reason: 'No retrieved chunk mentions a helpdesk or an extension. The model invented a plausible detail — a textbook hallucination.' },
+      { text: 'A new passphrase needs at least eight characters.',                              premise: 'password_policy.md#1', verdict: 'contradicts', reason: 'Chunk 1 says at least SIXTEEN characters. The model misread its own source — a contradiction, not just an omission.' },
+      { text: 'Password resets are approved by your manager within 24 hours.',                  premise: null,                verdict: 'neutral',     reason: 'Nothing in the context mentions manager approval or a 24-hour window — unsupported by every chunk.' },
+    ];
+
+    const ctxHtml = CTX.map(c =>
+      '<div class="nli-ctx" data-cid="' + c.id + '"><span class="nli-cid">' + c.id + '</span>' + c.text + '</div>').join('');
+    const btnHtml = SENT.map((s, i) =>
+      '<button type="button" class="nli-btn" data-si="' + i + '">' + s.text + '</button>').join('');
+    root.insertAdjacentHTML('beforeend',
+      '<div class="nli-wrap">' +
+        '<div class="nli-left"><div class="nli-head">Retrieved context · the premises</div>' + ctxHtml + '</div>' +
+        '<div class="nli-right"><div class="nli-head">Candidate answer sentences · the hypotheses</div>' +
+          '<div class="nli-btns">' + btnHtml + '</div><div class="nli-card" id="nli-card"></div></div>' +
+      '</div>');
+
+    const card = root.querySelector('#nli-card');
+    const ctxEls = root.querySelectorAll('.nli-ctx');
+    const btnEls = root.querySelectorAll('.nli-btn');
+    card.innerHTML = '<p class="nli-hint">Pick a sentence to check it against the retrieved context.</p>';
+
+    function show(i) {
+      const s = SENT[i], v = V[s.verdict], grounded = s.verdict === 'entails';
+      ctxEls.forEach(e => e.classList.toggle('active', e.dataset.cid === s.premise));
+      btnEls.forEach((e, j) => e.classList.toggle('active', j === i));
+      card.innerHTML =
+        '<div class="nli-line"><span class="nli-k">hypothesis:</span> <em>"' + s.text + '"</em></div>' +
+        '<div class="nli-line"><span class="nli-k">checked against:</span> ' +
+          (s.premise ? '<code>' + s.premise + '</code>' : '<span class="nli-none">no chunk supports it</span>') + '</div>' +
+        '<div class="nli-verdict"><span class="nli-badge" style="background:' + v.c + '">' + v.t + '</span>' +
+          '<span class="nli-ground ' + (grounded ? 'ok' : 'bad') + '">' + (grounded ? '✓ grounded' : '✗ flagged') + '</span></div>' +
+        '<div class="nli-reason">' + s.reason + '</div>';
+    }
+    btnEls.forEach((e, i) => e.addEventListener('click', () => show(i)));
+  }
+
+  /* ============================================================ */
   /* Boot                                                          */
   /* ============================================================ */
   document.addEventListener('DOMContentLoaded', () => {
@@ -956,6 +1011,7 @@ messages[1] · user
     initHybrid();
     initVectorDB();
     initProdPipeline();
+    initNLI();
     initGlossary();
   });
 })();

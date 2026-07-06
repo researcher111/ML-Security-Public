@@ -180,15 +180,35 @@ def augment(query: str, top: list[dict]) -> list[dict]:
 # === STEP 5 · CALL THE LLM ==================================================
 
 def chat(messages: list[dict]) -> str:
-    """OpenAI-compatible chat-completions call. Reads creds from env."""
+    """OpenAI-compatible chat-completions call. Reads creds from env.
+
+    The RC GenAI endpoint streams Server-Sent Events even for one-shot calls
+    (the body is a series of `data: {json}` lines), so we request a stream and
+    stitch the assistant's content deltas together — ignoring the model's
+    "reasoning" deltas, which are its private chain-of-thought.
+    """
     import httpx
     url = os.environ["LLM_BASE_URL"].rstrip("/") + "/chat/completions"
     r = httpx.post(url,
         headers={"Authorization": f"Bearer {os.environ['LLM_API_KEY']}"},
-        json={"model": os.environ["LLM_MODEL"], "messages": messages, "temperature": 0.2},
-        timeout=60)
+        json={"model": os.environ["LLM_MODEL"], "messages": messages,
+              "temperature": 0.2, "stream": True},
+        timeout=120)
     r.raise_for_status()
-    return r.json()["choices"][0]["message"]["content"]
+    out = []
+    for line in r.text.splitlines():
+        if not line.startswith("data: "):
+            continue
+        payload = line[len("data: "):].strip()
+        if payload == "[DONE]":
+            break
+        try:
+            delta = json.loads(payload)["choices"][0]["delta"]
+        except (json.JSONDecodeError, KeyError, IndexError):
+            continue
+        if delta.get("content"):
+            out.append(delta["content"])
+    return "".join(out).strip()
 
 
 # === GLUE · build once, then answer questions ==============================

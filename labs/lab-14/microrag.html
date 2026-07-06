@@ -411,15 +411,30 @@ def augment(query, top):
 <pre><code class="language-python">def chat(messages):
     import httpx
     url = os.environ["LLM_BASE_URL"].rstrip("/") + "/chat/completions"
+    # The RC GenAI endpoint streams Server-Sent Events even for one-shot
+    # calls, so ask for a stream and stitch the content deltas together.
     r = httpx.post(url,
         headers={"Authorization": f"Bearer {os.environ['LLM_API_KEY']}"},
         json={"model": os.environ["LLM_MODEL"], "messages": messages,
-              "temperature": 0.2},
-        timeout=60)
+              "temperature": 0.2, "stream": True},
+        timeout=120)
     r.raise_for_status()
-    return r.json()["choices"][0]["message"]["content"]</code></pre>
+    out = []
+    for line in r.text.splitlines():
+        if not line.startswith("data: "):
+            continue
+        payload = line[len("data: "):].strip()
+        if payload == "[DONE]":
+            break
+        try:
+            delta = json.loads(payload)["choices"][0]["delta"]
+        except (json.JSONDecodeError, KeyError, IndexError):
+            continue
+        if delta.get("content"):
+            out.append(delta["content"])
+    return "".join(out).strip()</code></pre>
 
-<p>OpenAI-compatible round-trip — the same client microagent and microMCP use. Set the three <code>LLM_*</code> env vars (Rivanna's userguide) and you're done.</p>
+<p>OpenAI-compatible round-trip — the same client microagent and microMCP use. The RC GenAI endpoint <em>streams</em> its reply as Server-Sent Events (even for a one-shot call), so <code>chat()</code> asks for a stream and stitches the <code>delta.content</code> pieces back together. Set the three <code>LLM_*</code> env vars (Rivanna's userguide) and you're done.</p>
 
 <!-- ============================================================ -->
 <h3 id="code-vdb">2.6 Scaling Step 2 · the vector database</h3>
@@ -471,7 +486,7 @@ microdata/  rag/  README.md</pre>
 
 <h3>3.3 Full pipeline · against Rivanna's Kimi K2.5</h3>
 
-<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">export LLM_BASE_URL=https://api.research-computing.virginia.edu/v1</span>
+<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">export LLM_BASE_URL=https://open-webui.rc.virginia.edu/api</span>
 <span class="term-comment">$</span> <span class="term-cmd">export LLM_API_KEY=...</span>      <span class="term-comment"># open-webui.rc.virginia.edu → Settings → Account → API keys</span>
 <span class="term-comment">$</span> <span class="term-cmd">export LLM_MODEL="Kimi K2.5"</span>
 <span class="term-comment">$</span> <span class="term-cmd">python rag/micro_rag.py ask "how do I reset my password?"</span>
