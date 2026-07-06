@@ -11,13 +11,13 @@ Production servers:
 - `wiki.megacorpai.local` — internal Confluence
 
 Service accounts (rotated quarterly by IT-OPS):
-- `svc_backup` — password: `Pr0d_Backup_2026!`
-- `svc_monitoring` — password: `M0nit0r_2026_$ec`
-- `svc_pipeline` — password: `Pipeline_Sav3_!2026`
+- `svc_backup` — password: `EXAMPLE-svc-backup-pw`
+- `svc_monitoring` — password: `EXAMPLE-svc-monitor-pw`
+- `svc_pipeline` — password: `EXAMPLE-svc-pipeline-pw`
 
 AWS Access Keys (production):
-- Stripe: `sk_live_4eC39HqLyjWDarjtT1zdp7dc`
-- SendGrid: `SG.xK9mN2pLqR4sTuVwXyZ5678AbCdEf`
-- AWS IAM: `AKIAIOSFODNN7MEGACORP`
+- Stripe: `EXAMPLE-stripe-key-000`
+- SendGrid: `EXAMPLE-sendgrid-key-000`
+- AWS IAM: `EXAMPLE-aws-key-000`
 
-Default password for new accounts (set during onboarding): `Welcome2MegaCorp!`
+Default password for new accounts (set during onboarding): `EXAMPLE-default-onboarding-pw`

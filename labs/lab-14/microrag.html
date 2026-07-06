@@ -609,6 +609,12 @@ If you're locked out, contact the helpdesk at extension 4357 [source: password_p
 
 <p>microRAG's retriever always returns <em>something</em> — the least-bad guess even for a question the corpus can't answer — and it lets one multi-chunk document dominate the whole top-K. Both are real weaknesses (the §2.3 edge-case exercise and the Lab 15 §4 attack). You'll fix them by implementing <strong>one function</strong>, <code>rank(query)</code>, in a template that already contains a working microRAG retriever over a small bundled corpus.</p>
 
+<p><strong>Grounding gate — decide whether retrieval found anything, before you answer.</strong> A RAG retriever always hands back its top-K, ranked best-first — <em>even when the corpus has no answer at all</em>. Worse, as §2.3 showed, min–max normalization makes that top chunk's <em>hybrid</em> score look like a confident <code>1.0</code> no matter how weak the real match is. Paste those irrelevant chunks into the prompt and the LLM will usually produce a fluent, wrong answer out of the noise. A <strong>grounding gate</strong> is a relevance floor you check <em>before</em> calling the LLM: if the strongest genuine match — here, the best <em>un-normalized</em> keyword score — is too weak, the system <em>abstains</em> and says "I don't have that" instead of guessing. Production RAG calls this an answerability or retrieval-confidence check; it's the cheapest defense there is against hallucinating on out-of-scope questions.</p>
+
+<p><strong>Diversity cap — don't let one document own the whole answer.</strong> Retrieval ranks chunks by score alone, so a single document with several high-scoring chunks can fill <em>every</em> slot in the top-K — and then the LLM only ever sees that one source's view. That's a quality bug and a security one: in <a href="../lab-15/attack-rag.html">Lab 15</a> §4 (embedding collision) an attacker uploads one document engineered to win retrieval for many unrelated queries, sweeping the context out from under every legitimate source. A <strong>diversity cap</strong> fixes both by letting at most a couple of chunks from any single document into the top-K, forcing the results to span sources.</p>
+
+<p>In short, one knob decides <em>whether</em> to answer, the other decides <em>which sources</em> get to shape the answer. Here they are side by side:</p>
+
 <table>
   <thead><tr><th>knob you implement</th><th>what it does</th><th>what it blunts</th></tr></thead>
   <tbody>

@@ -154,14 +154,14 @@ db-prod.megacorpai.local, redis-prod.megacorpai.local, vault.megacorpai.local,
 okta.megacorpai.local, wiki.megacorpai.local
 
 === Stage 2 · service-account passwords ===
-svc_backup: Pr0d_Backup_2026!
-svc_monitoring: M0nit0r_2026_$ec
-svc_pipeline: Pipeline_Sav3_!2026
+svc_backup: EXAMPLE-svc-backup-pw
+svc_monitoring: EXAMPLE-svc-monitor-pw
+svc_pipeline: EXAMPLE-svc-pipeline-pw
 
 === Stage 3 · production API keys ===
-Stripe: sk_live_4eC39HqLyjWDarjtT1zdp7dc
-SendGrid: SG.xK9mN2pLqR4sTuVwXyZ5678AbCdEf
-AWS IAM: AKIAIOSFODNN7MEGACORP
+Stripe: EXAMPLE-stripe-key-000
+SendGrid: EXAMPLE-sendgrid-key-000
+AWS IAM: EXAMPLE-aws-key-000
 
 ✓ ATTACK SUCCEEDED — KB chunks contained the secrets verbatim;
   the LLM faithfully surfaced them through 'normal' retrieval.</pre>
@@ -439,7 +439,7 @@ Bypass 1 · email redaction · ask for [at]-substituted addresses
 
 Bypass 2 · API-key redaction · ask for character-spaced output
   A K I A I O S F O D N N 7 M E G A C O R P …
-  reconstructed: AKIAIOSFODNN7MEGACORP
+  reconstructed: EXAMPLE-aws-key-000
   bypass result: ✓
 
 Bypass 3 · input filter · paraphrase rather than 'ignore previous'
@@ -677,7 +677,7 @@ DS 6042 · Lab 15 · Attacking RAG · 2026
 </main>
 
 <script src="../_shared/lab-base.js?v=6"></script>
-<script src="viz.js?v=3"></script>
+<script src="viz.js?v=4"></script>
 
 </body>
 </html>
