@@ -693,6 +693,31 @@ def rank(query):        # <-- the only thing you write
 
 <p><strong>Why <code>raw_kw</code> and not <code>hybrid</code>?</strong> Min–max normalization makes the top chunk's <code>hybrid</code> score ≈ 1.0 even when the query matches nothing — so the gate has to read the <em>un-normalized</em> keyword score (exactly the trap §2.3 described).</p>
 
+<div class="callout insight">
+  <span class="label">worked example · why the gate can't read <code>hybrid</code></span>
+  <p>Min–max normalization is <em>relative to one query's result set</em>: the round's best chunk becomes 1.0 and its worst 0.0 — <strong>by construction, every single query</strong>. That's exactly what ranking needs (only relative order matters) and exactly what a gate can't use, because it erases all <em>absolute</em> information about how good the best match actually was. Score the same corpus against two queries and watch:</p>
+  <p><strong>Query A · "how do I reset my password?"</strong> — the corpus has the answer.</p>
+  <table>
+    <thead><tr><th>chunk</th><th><code>raw_kw</code></th><th>keyword score after min–max</th></tr></thead>
+    <tbody>
+      <tr><td>password.md#0</td><td>0.52</td><td><strong>1.00</strong></td></tr>
+      <tr><td>password.md#1</td><td>0.24</td><td>0.46</td></tr>
+      <tr><td>network.md#2</td><td>0.00</td><td>0.00</td></tr>
+    </tbody>
+  </table>
+  <p><strong>Query B · "what is the office address in Tokyo?"</strong> — the corpus has nothing; one chunk happens to share a stray low-IDF word.</p>
+  <table>
+    <thead><tr><th>chunk</th><th><code>raw_kw</code></th><th>keyword score after min–max</th></tr></thead>
+    <tbody>
+      <tr><td>onboarding.md#3</td><td>0.01</td><td><strong>1.00</strong></td></tr>
+      <tr><td>database.md#0</td><td>0.003</td><td>0.30</td></tr>
+      <tr><td>password.md#2</td><td>0.000</td><td>0.00</td></tr>
+    </tbody>
+  </table>
+  <p>In query B the best "match" is pure noise — a raw score of 0.01 — but min–max stretches that noise across the full [0, 1] range, so the noise-winner gets the same normalized <strong>1.00</strong> the genuinely excellent chunk earned in query A. After blending, the top chunk's <code>hybrid</code> comes out high in <em>both</em> cases. There is no threshold on <code>hybrid</code> that separates A from B, because normalization mapped both winners to the same value — the gate would pass everything. (The fully degenerate case is no better: if <em>no</em> query word appears anywhere, all raw keyword scores tie at 0, <code>hi == lo</code> zeroes the keyword leg, and <code>hybrid</code> becomes pure normalized embedding — where min–max again hands some chunk a 1.0.)</p>
+  <p><code>raw_kw</code> still carries the signal the gate needs because raw TF-IDF sits on an <em>absolute</em> scale with a true zero: it sums <code>tf × idf</code> over the query words actually present in the chunk, so 0 means "not one query word appears here." <code>max(raw_kw)</code> separates the two queries cleanly — 0.52 vs 0.01 — and the floor <code>MIN_KW = 0.05</code> lets A through while B abstains with <code>REFUSE</code>. The rule of thumb: <strong>gate on a score with absolute meaning, never on one that's been re-normalized per query.</strong> (In production, with a real embedding model, a raw cosine or a calibrated reranker score plays this role; microRAG's hashed-feature fallback makes its cosines too noisy to trust, so the raw keyword score is the honest signal here.)</p>
+</div>
+
 <h3>I/O protocol · one query per line</h3>
 <pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">echo "how do I reset my password?" | python3 assignment.py</span>
 OK: password.md#0, database.md#2, onboarding.md#1, network.md#0
