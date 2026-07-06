@@ -8,7 +8,10 @@ SERVER = "http://127.0.0.1:8090"
 
 def ask(query: str) -> dict:
     try:
-        r = httpx.post(SERVER + "/query", json={"query": query}, timeout=120)
+        # The RC GenAI deployment is slow and frequently drops the first request
+        # (~60s time-to-first-token vs the gateway's 60s timeout), so the server
+        # retries internally — which can take a few minutes. Give it room.
+        r = httpx.post(SERVER + "/query", json={"query": query}, timeout=600)
     except httpx.ConnectError:
         print(f"!! cannot reach {SERVER} — start the server first:")
         print("   uvicorn server.baseline_rag:app --port 8090 --reload")

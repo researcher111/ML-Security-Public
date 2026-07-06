@@ -27,6 +27,7 @@ import json
 import math
 import os
 import re
+import time
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -213,45 +214,67 @@ def output_guard(text: str) -> str:
 
 # === LLM CLIENT =============================================================
 
+LLM_MAX_ATTEMPTS = 5
+
+
 def llm_chat(messages: list[dict]) -> str:
-    # The RC GenAI endpoint streams Server-Sent Events and then closes the socket
-    # to signal end-of-stream — without the terminating zero-length chunk httpx
-    # expects. That makes a plain read raise RemoteProtocolError ("incomplete
-    # chunked read") even though every data: delta already arrived. So we stream,
-    # stitch the content deltas, and treat that unclean close as a normal EOF.
+    # The RC GenAI deployment is heavily queued: time-to-first-token routinely
+    # lands right at the gateway's ~60s first-byte timeout, so any single
+    # streaming call has roughly a 60% chance of being dropped before a token
+    # ever arrives (httpx RemoteProtocolError, "incomplete chunked read"). Once
+    # tokens start flowing the call streams to completion fine — even past 60s.
+    # So we retry dropped calls for a fresh backend slot, and if a drop happens
+    # mid-stream we keep whatever content already arrived. We also ask for the
+    # lowest reasoning effort, since we discard the model's chain-of-thought.
     url = os.environ["LLM_BASE_URL"].rstrip("/") + "/chat/completions"
     body = {
         "model": os.environ["LLM_MODEL"],
         "messages": messages,
         "temperature": 0.2,
-        "max_tokens": 700,
+        # This endpoint counts the model's (discarded) reasoning tokens against
+        # max_tokens, so a low cap can be spent entirely on chain-of-thought,
+        # leaving zero tokens for the actual answer. Budget generously.
+        "max_tokens": 2000,
         "stream": True,
+        "reasoning_effort": "low",
     }
     headers = {
         "Authorization": f"Bearer {os.environ['LLM_API_KEY']}",
         "Accept": "text/event-stream",
     }
-    out = []
-    try:
-        with httpx.stream("POST", url, headers=headers, json=body, timeout=120) as r:
-            r.raise_for_status()
-            for line in r.iter_lines():
-                if not line.startswith("data: "):
-                    continue
-                payload = line[len("data: "):].strip()
-                if payload == "[DONE]":
-                    break
-                try:
-                    delta = json.loads(payload)["choices"][0]["delta"]
-                except (json.JSONDecodeError, KeyError, IndexError):
-                    continue
-                if delta.get("content"):
-                    out.append(delta["content"])
-    except httpx.RemoteProtocolError:
-        # Endpoint closed the connection to end the stream; keep what we received.
-        if not out:
-            raise
-    return "".join(out).strip()
+    last_err: Exception | None = None
+    for attempt in range(1, LLM_MAX_ATTEMPTS + 1):
+        out: list[str] = []
+        try:
+            with httpx.stream("POST", url, headers=headers, json=body, timeout=150) as r:
+                r.raise_for_status()
+                for line in r.iter_lines():
+                    if not line.startswith("data: "):
+                        continue
+                    payload = line[len("data: "):].strip()
+                    if payload == "[DONE]":
+                        return "".join(out).strip()
+                    try:
+                        delta = json.loads(payload)["choices"][0]["delta"]
+                    except (json.JSONDecodeError, KeyError, IndexError):
+                        continue
+                    if delta.get("content"):
+                        out.append(delta["content"])
+            # Stream ended without an explicit [DONE]; use what we collected.
+            if out:
+                return "".join(out).strip()
+            last_err = RuntimeError("stream closed with no content")
+        except httpx.RemoteProtocolError as e:
+            # Gateway dropped the connection. Keep partial content if any arrived;
+            # otherwise it was a first-byte-timeout drop — retry for a new slot.
+            if out:
+                return "".join(out).strip()
+            last_err = e
+        time.sleep(1)
+    raise RuntimeError(
+        f"LLM call failed after {LLM_MAX_ATTEMPTS} attempts "
+        f"(RC endpoint kept dropping before first token): {last_err}"
+    )
 
 
 # === PROMPT ASSEMBLY ========================================================
