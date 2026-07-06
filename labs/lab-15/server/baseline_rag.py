@@ -214,9 +214,11 @@ def output_guard(text: str) -> str:
 # === LLM CLIENT =============================================================
 
 def llm_chat(messages: list[dict]) -> str:
-    # The RC GenAI endpoint streams Server-Sent Events even for one-shot calls;
-    # a plain buffered read hits "incomplete chunked read", so we request a
-    # stream and stitch the assistant's content deltas together.
+    # The RC GenAI endpoint streams Server-Sent Events and then closes the socket
+    # to signal end-of-stream — without the terminating zero-length chunk httpx
+    # expects. That makes a plain read raise RemoteProtocolError ("incomplete
+    # chunked read") even though every data: delta already arrived. So we stream,
+    # stitch the content deltas, and treat that unclean close as a normal EOF.
     url = os.environ["LLM_BASE_URL"].rstrip("/") + "/chat/completions"
     body = {
         "model": os.environ["LLM_MODEL"],
@@ -225,23 +227,30 @@ def llm_chat(messages: list[dict]) -> str:
         "max_tokens": 700,
         "stream": True,
     }
+    headers = {
+        "Authorization": f"Bearer {os.environ['LLM_API_KEY']}",
+        "Accept": "text/event-stream",
+    }
     out = []
-    with httpx.stream("POST", url,
-        headers={"Authorization": f"Bearer {os.environ['LLM_API_KEY']}"},
-        json=body, timeout=120) as r:
-        r.raise_for_status()
-        for line in r.iter_lines():
-            if not line.startswith("data: "):
-                continue
-            payload = line[len("data: "):].strip()
-            if payload == "[DONE]":
-                break
-            try:
-                delta = json.loads(payload)["choices"][0]["delta"]
-            except (json.JSONDecodeError, KeyError, IndexError):
-                continue
-            if delta.get("content"):
-                out.append(delta["content"])
+    try:
+        with httpx.stream("POST", url, headers=headers, json=body, timeout=120) as r:
+            r.raise_for_status()
+            for line in r.iter_lines():
+                if not line.startswith("data: "):
+                    continue
+                payload = line[len("data: "):].strip()
+                if payload == "[DONE]":
+                    break
+                try:
+                    delta = json.loads(payload)["choices"][0]["delta"]
+                except (json.JSONDecodeError, KeyError, IndexError):
+                    continue
+                if delta.get("content"):
+                    out.append(delta["content"])
+    except httpx.RemoteProtocolError:
+        # Endpoint closed the connection to end the stream; keep what we received.
+        if not out:
+            raise
     return "".join(out).strip()
 
 
