@@ -1394,3 +1394,469 @@
     part.addEventListener('click', () => show(part));
   });
 })();
+
+
+/* ============================================================
+ * §8 · Inside nanochat/ — annotated source-code blocks
+ *   Ported from Lab 02's annotated gpt() walkthrough, generalized:
+ *   auto-discovers every .annotated-code-wrap on the page, so each
+ *   file in the source tour needs zero extra wiring.
+ *
+ *   Structure expected inside each .annotated-code-wrap:
+ *     .annotated-code  > .code-step[data-step][data-step-name][data-explain]
+ *     .code-explain-panel > .code-explain-tag + .code-explain-text
+ *
+ *   Hovering (or keyboard-focusing) an annotated line paints it,
+ *   paints all peer lines sharing its data-step, and swaps the
+ *   explain panel's content for the line's data-explain HTML.
+ * ============================================================ */
+(function initAnnotatedSource() {
+  'use strict';
+
+  // Lightweight Python syntax highlighter emitting Prism token classes so the
+  // Prism CSS theme already loaded on the page paints the code. We can't run
+  // Prism itself because every line lives in its own <div> (for hover scoping).
+  const KEYWORDS = new Set(['def','for','in','return','if','else','elif','None','True','False',
+    'and','or','not','lambda','class','import','from','as','with','while','break','continue',
+    'pass','yield','global','nonlocal','raise','try','except','finally','assert','del','is','async','await']);
+  const BUILTINS = new Set(['range','len','zip','print','sum','enumerate','map','filter','list',
+    'dict','tuple','set','int','float','str','bool','abs','min','max','round','sorted','reversed',
+    'isinstance','super','hasattr','getattr','setattr','open','all','any','bytes','iter','next','vars']);
+  const escapeHtml = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  function highlight(text) {
+    // One master regex — order matters: comments, then strings, then numbers, then identifiers.
+    const re = /(#[^\n]*)|([rbfu]{0,2}'(?:[^'\\]|\\.)*'|[rbfu]{0,2}"(?:[^"\\]|\\.)*")|(\b\d[\d_]*(?:\.\d+)?(?:e-?\d+)?\b)|([A-Za-z_]\w*)/g;
+    let out = '';
+    let last = 0;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      if (m.index > last) out += escapeHtml(text.substring(last, m.index));
+      let cls = null;
+      const body = m[0];
+      if (m[1]) cls = 'comment';
+      else if (m[2]) cls = 'string';
+      else if (m[3]) cls = 'number';
+      else if (m[4]) {
+        const word = m[4];
+        if (KEYWORDS.has(word)) cls = 'keyword';
+        else if (BUILTINS.has(word)) cls = 'builtin';
+        else if (/^\s*\(/.test(text.substring(m.index + word.length))) cls = 'function';
+      }
+      out += cls ? `<span class="token ${cls}">${escapeHtml(body)}</span>` : escapeHtml(body);
+      last = m.index + m[0].length;
+    }
+    if (last < text.length) out += escapeHtml(text.substring(last));
+    return out;
+  }
+
+  document.querySelectorAll('.annotated-code-wrap').forEach(wrap => {
+    const root = wrap.querySelector('.annotated-code');
+    const panel = wrap.querySelector('.code-explain-panel');
+    if (!root || !panel) return;
+    const tagEl = panel.querySelector('.code-explain-tag');
+    const textEl = panel.querySelector('.code-explain-text');
+    if (!tagEl || !textEl) return;
+    const defaultTag = tagEl.textContent;
+    const defaultText = textEl.innerHTML;
+
+    // Elided-lines markers keep their literal text (⋯ …); real code gets highlighted.
+    root.querySelectorAll('.code-step').forEach(el => {
+      if (!el.classList.contains('code-elide')) {
+        el.innerHTML = highlight(el.textContent);
+      }
+    });
+
+    root.querySelectorAll('.code-step[data-explain]').forEach(el => {
+      const step = el.dataset.step;
+      const peers = step ? root.querySelectorAll(`.code-step[data-step="${step}"]`) : [el];
+      function show() {
+        peers.forEach(p => p.classList.add('active'));
+        tagEl.textContent = el.dataset.stepName || step || '';
+        textEl.innerHTML = el.dataset.explain;
+      }
+      function hide() {
+        peers.forEach(p => p.classList.remove('active'));
+        tagEl.textContent = defaultTag;
+        textEl.innerHTML = defaultText;
+      }
+      el.addEventListener('mouseenter', show);
+      el.addEventListener('mouseleave', hide);
+      el.tabIndex = 0; // keyboard accessibility
+      el.addEventListener('focus', show);
+      el.addEventListener('blur', hide);
+    });
+  });
+})();
+
+
+/* ============================================================
+ * Widget · §6.2 · RoPE — rotary embeddings (#viz-rope)
+ *   Panel 1: 8 "clock dials", one per channel pair, hand angle
+ *   m·θ_c with θ_c = base^(−c/(N−1)) — geometric frequency decay,
+ *   mirroring gpt.py's inv_freq = 1/base^(channel/head_dim).
+ *   Panel 2: q rotated by i·θ, k by j·θ on one circle; readout
+ *   shows q·k = cos((i−j)·θ) — invariant when both slide together.
+ * ============================================================ */
+(function initRope() {
+  'use strict';
+  const root = document.getElementById('viz-rope');
+  if (!root) return;
+  const NS = 'http://www.w3.org/2000/svg';
+  function svg(name, attrs, parent, text) {
+    const n = document.createElementNS(NS, name);
+    if (attrs) for (const k in attrs) n.setAttribute(k, attrs[k]);
+    if (text != null) n.textContent = text;
+    if (parent) parent.appendChild(n);
+    return n;
+  }
+  const fmt = (x, d) => (Math.round(x * Math.pow(10, d)) / Math.pow(10, d)).toFixed(d);
+
+  /* ---------------- Panel 1 · dial bank ---------------- */
+  const N_DIALS = 8, BASE = 1000;
+  const thetas = Array.from({ length: N_DIALS }, (_, c) => Math.pow(BASE, -c / (N_DIALS - 1)));
+  const dialsBox = document.getElementById('rope-dials');
+  const hands = [], angleLabels = [];
+  thetas.forEach((th, c) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'rope-dial';
+    const s = svg('svg', { width: 62, height: 62, viewBox: '0 0 62 62' }, null);
+    svg('circle', { cx: 31, cy: 31, r: 26, fill: '#fff', stroke: '#e6e1d6', 'stroke-width': 1.5 }, s);
+    // 12 o'clock tick = "position 0"
+    svg('line', { x1: 31, y1: 3.5, x2: 31, y2: 9, stroke: '#8a857d', 'stroke-width': 1.5 }, s);
+    const hand = svg('line', { x1: 31, y1: 31, x2: 31, y2: 9, stroke: '#b14a2e', 'stroke-width': 2.5, 'stroke-linecap': 'round' }, s);
+    svg('circle', { cx: 31, cy: 31, r: 2.4, fill: '#b14a2e' }, s);
+    wrap.appendChild(s);
+    const lab = document.createElement('div');
+    lab.className = 'rope-dial-label';
+    lab.innerHTML = `pair ${c}<br>θ=${th >= 0.01 ? fmt(th, 2) : fmt(th, 3)}`;
+    wrap.appendChild(lab);
+    dialsBox.appendChild(wrap);
+    hands.push(hand);
+    angleLabels.push(lab);
+  });
+  const posSlider = document.getElementById('rope-pos');
+  const posOut = document.getElementById('rope-pos-out');
+  function renderDials() {
+    const m = +posSlider.value;
+    posOut.textContent = m;
+    thetas.forEach((th, c) => {
+      const a = m * th; // radians, clockwise from 12 o'clock
+      const x = 31 + 22 * Math.sin(a);
+      const y = 31 - 22 * Math.cos(a);
+      hands[c].setAttribute('x2', x);
+      hands[c].setAttribute('y2', y);
+    });
+  }
+  posSlider.addEventListener('input', renderDials);
+  // animate button
+  let animTimer = null;
+  const animBtn = document.getElementById('rope-anim');
+  animBtn.addEventListener('click', () => {
+    if (animTimer) {
+      clearInterval(animTimer); animTimer = null;
+      animBtn.textContent = '▶ animate m';
+      return;
+    }
+    animBtn.textContent = '⏸ stop';
+    animTimer = setInterval(() => {
+      posSlider.value = (+posSlider.value + 1) % (+posSlider.max + 1);
+      renderDials();
+    }, 110);
+  });
+  renderDials();
+
+  /* ---------------- Panel 2 · relative position ---------------- */
+  const THETA = 0.35;            // one shared frequency for the demo
+  const rel = document.getElementById('rope-rel-svg');
+  const CX = 125, CY = 125, R = 92;
+  svg('circle', { cx: CX, cy: CY, r: R, fill: '#fff', stroke: '#e6e1d6', 'stroke-width': 1.5 }, rel);
+  svg('line', { x1: CX, y1: CY - R, x2: CX, y2: CY - R + 7, stroke: '#8a857d', 'stroke-width': 1.5 }, rel);
+  svg('text', { x: CX, y: CY - R - 6, 'text-anchor': 'middle', 'font-size': 10, fill: '#8a857d', 'font-family': 'monospace' }, rel, 'position 0');
+  const gapArc = svg('path', { fill: 'none', stroke: '#d9a441', 'stroke-width': 5, 'stroke-linecap': 'round', opacity: 0.85 }, rel);
+  const qLine = svg('line', { x1: CX, y1: CY, stroke: '#b14a2e', 'stroke-width': 3, 'stroke-linecap': 'round' }, rel);
+  const kLine = svg('line', { x1: CX, y1: CY, stroke: '#2e5fb1', 'stroke-width': 3, 'stroke-linecap': 'round' }, rel);
+  const qDot = svg('circle', { r: 5, fill: '#b14a2e' }, rel);
+  const kDot = svg('circle', { r: 5, fill: '#2e5fb1' }, rel);
+  const qLab = svg('text', { 'font-size': 12, 'font-weight': 700, fill: '#b14a2e', 'font-family': 'monospace' }, rel, 'q');
+  const kLab = svg('text', { 'font-size': 12, 'font-weight': 700, fill: '#2e5fb1', 'font-family': 'monospace' }, rel, 'k');
+  svg('circle', { cx: CX, cy: CY, r: 2.5, fill: '#8a857d' }, rel);
+  const gapLab = svg('text', { 'font-size': 11, fill: '#9a7118', 'font-family': 'monospace', 'text-anchor': 'middle' }, rel, '');
+
+  const iS = document.getElementById('rope-i'), jS = document.getElementById('rope-j');
+  const iOut = document.getElementById('rope-i-out'), jOut = document.getElementById('rope-j-out');
+  const readout = document.getElementById('rope-readout');
+  const pt = (a, r) => [CX + r * Math.sin(a), CY - r * Math.cos(a)];
+
+  function renderRel(held) {
+    const i = +iS.value, j = +jS.value;
+    iOut.textContent = i; jOut.textContent = j;
+    const ai = i * THETA, aj = j * THETA;
+    const [qx, qy] = pt(ai, R), [kx, ky] = pt(aj, R);
+    qLine.setAttribute('x2', qx); qLine.setAttribute('y2', qy);
+    kLine.setAttribute('x2', kx); kLine.setAttribute('y2', ky);
+    qDot.setAttribute('cx', qx); qDot.setAttribute('cy', qy);
+    kDot.setAttribute('cx', kx); kDot.setAttribute('cy', ky);
+    const [qlx, qly] = pt(ai, R + 14); const [klx, kly] = pt(aj, R + 14);
+    qLab.setAttribute('x', qlx - 4); qLab.setAttribute('y', qly + 4);
+    kLab.setAttribute('x', klx - 4); kLab.setAttribute('y', kly + 4);
+    // gap arc between the two hands (short way, at inner radius)
+    const rArc = R - 14;
+    const a0 = Math.min(ai, aj), a1 = Math.max(ai, aj);
+    // draw the arc from a0 to a1 going clockwise; split into segments for large angles
+    const steps = Math.max(2, Math.ceil((a1 - a0) / 0.2));
+    let d = '';
+    for (let s = 0; s <= steps; s++) {
+      const [x, y] = pt(a0 + (a1 - a0) * s / steps, rArc);
+      d += (s === 0 ? 'M' : 'L') + fmt(x, 1) + ' ' + fmt(y, 1);
+    }
+    gapArc.setAttribute('d', d);
+    const [gx, gy] = pt((a0 + a1) / 2, rArc - 14);
+    gapLab.setAttribute('x', gx); gapLab.setAttribute('y', gy);
+    gapLab.textContent = 'gap';
+    const gap = (i - j) * THETA;
+    const score = Math.cos(gap);
+    const hold = held ? ' rr-hold' : '';
+    readout.innerHTML =
+      `<span class="rr-q">q</span> rotated by  i·θ = ${fmt(ai, 2)} rad<br>` +
+      `<span class="rr-k">k</span> rotated by  j·θ = ${fmt(aj, 2)} rad<br>` +
+      `gap = (i−j)·θ = <span class="${hold ? 'rr-hold' : ''}">${fmt(gap, 2)} rad</span><br>` +
+      `score q·k = cos(gap) = <span class="${hold ? 'rr-hold' : ''}">${fmt(score, 3)}</span>`;
+  }
+  iS.addEventListener('input', () => renderRel(false));
+  jS.addEventListener('input', () => renderRel(false));
+
+  function slideBoth(delta) {
+    let i = +iS.value, j = +jS.value;
+    const max = +iS.max;
+    if (Math.max(i, j) + delta > max) { i -= 20; j -= 20; } // wrap, gap preserved
+    const ti = i + delta, tj = j + delta;
+    const t0 = performance.now(), DUR = 450;
+    function step(now) {
+      const f = Math.min(1, (now - t0) / DUR);
+      iS.value = Math.round(i + (ti - i) * f);
+      jS.value = Math.round(j + (tj - j) * f);
+      renderRel(true);
+      if (f < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+  document.getElementById('rope-shift').addEventListener('click', () => slideBoth(5));
+  document.getElementById('rope-shift1').addEventListener('click', () => slideBoth(1));
+  document.getElementById('rope-rst').addEventListener('click', () => { iS.value = 9; jS.value = 4; renderRel(false); });
+  renderRel(false);
+})();
+
+
+/* ============================================================
+ * Widget · §6.2 · Flash Attention (#viz-flash)
+ *   16×16 causal score matrix. Two algorithms animated:
+ *   - naive: fill the whole lower triangle in "HBM" (meter grows)
+ *   - flash: process 4×4 tiles; only the live tile exists (SRAM),
+ *     processed tiles are discarded; per-row running (m, ℓ, O)
+ *     accumulators shown updating. Window toggle greys out cells
+ *     beyond a 6-token sliding window (nanochat's "S" layers).
+ * ============================================================ */
+(function initFlash() {
+  'use strict';
+  const root = document.getElementById('viz-flash');
+  if (!root) return;
+  const NS = 'http://www.w3.org/2000/svg';
+  function svg(name, attrs, parent, text) {
+    const n = document.createElementNS(NS, name);
+    if (attrs) for (const k in attrs) n.setAttribute(k, attrs[k]);
+    if (text != null) n.textContent = text;
+    if (parent) parent.appendChild(n);
+    return n;
+  }
+
+  const T = 16, TILE = 4, CELL = 20, PAD = 30;
+  const WINDOW = 6; // "S" layer demo window (keys within 6 back)
+  const grid = document.getElementById('flash-grid');
+  const sram = document.getElementById('flash-sram');
+  const accBox = document.getElementById('flash-acc');
+  const meterFill = document.getElementById('flash-meter-fill');
+  const meterLabel = document.getElementById('flash-meter-label');
+  const statusBox = document.getElementById('flash-status');
+  const caption = document.getElementById('flash-caption');
+  const legend = document.getElementById('flash-legend');
+
+  const COLORS = {
+    future:  { fill: '#faf8f3', stroke: '#eeeae0' },   // j > i, masked by causality
+    skipped: { fill: '#e4e0d3', stroke: '#d6d1c2' },   // outside sliding window
+    valid:   { fill: '#ffffff', stroke: '#e0dbd0' },   // to be computed
+    stored:  { fill: '#d98e62', stroke: '#c07747' },   // naive: sitting in HBM
+    active:  { fill: '#b14a2e', stroke: '#8e3a22' },   // flash: current tile in SRAM
+    done:    { fill: '#d5e6dc', stroke: '#b8cfc2' },   // flash: computed, discarded
+  };
+
+  let mode = 'flash', win = 'L';
+  let timer = null;
+
+  // Build grid cells + axis labels
+  const cells = [];
+  for (let i = 0; i < T; i++) {
+    cells.push([]);
+    for (let j = 0; j < T; j++) {
+      const r = svg('rect', {
+        x: PAD + j * CELL + 1, y: PAD + i * CELL + 1,
+        width: CELL - 2, height: CELL - 2, rx: 2,
+      }, grid);
+      cells[i].push(r);
+    }
+  }
+  for (let k = 0; k < T; k += 4) {
+    svg('text', { x: PAD + k * CELL + CELL / 2, y: PAD - 8, 'text-anchor': 'middle', 'font-size': 9.5, fill: '#8a857d', 'font-family': 'monospace' }, grid, 'k' + k);
+    svg('text', { x: PAD - 6, y: PAD + k * CELL + CELL / 2 + 3, 'text-anchor': 'end', 'font-size': 9.5, fill: '#8a857d', 'font-family': 'monospace' }, grid, 'q' + k);
+  }
+  // SRAM mini-tile
+  const sramCells = [];
+  for (let a = 0; a < TILE; a++) {
+    sramCells.push([]);
+    for (let b = 0; b < TILE; b++) {
+      const r = svg('rect', { x: 2 + b * 24, y: 2 + a * 24, width: 21, height: 21, rx: 3, fill: '#f4f1ea', stroke: '#e0dbd0' }, sram);
+      sramCells[a].push(r);
+    }
+  }
+
+  const isValid = (i, j) => j <= i && (win === 'L' || (i - j) <= WINDOW);
+  const cellKind = (i, j) => j > i ? 'future' : (isValid(i, j) ? 'valid' : 'skipped');
+
+  function paint(r, kind) {
+    r.setAttribute('fill', COLORS[kind].fill);
+    r.setAttribute('stroke', COLORS[kind].stroke);
+  }
+  function paintSram(on, tileCells) {
+    for (let a = 0; a < TILE; a++) for (let b = 0; b < TILE; b++) {
+      const lit = on && tileCells && tileCells[a][b];
+      sramCells[a][b].setAttribute('fill', lit ? '#b14a2e' : '#f4f1ea');
+      sramCells[a][b].setAttribute('stroke', lit ? '#8e3a22' : '#e0dbd0');
+    }
+  }
+  function setLegend() {
+    const items = mode === 'naive'
+      ? [['stored in HBM', COLORS.stored.fill], ['not yet computed', COLORS.valid.fill], ['masked (future)', COLORS.future.fill]]
+      : [['live tile (SRAM)', COLORS.active.fill], ['computed → discarded', COLORS.done.fill], ['not yet computed', COLORS.valid.fill], ['masked (future)', COLORS.future.fill]];
+    if (win === 'S') items.push(['outside window — skipped', COLORS.skipped.fill]);
+    legend.innerHTML = items.map(([t, c]) => `<span><span class="fl-swatch" style="background:${c}"></span>${t}</span>`).join('');
+  }
+  function setCaption() {
+    const winNote = win === 'S'
+      ? ` <strong>Sliding window:</strong> the grey cells aren't optimized away — they're <em>never computed</em>. That's nanochat's <code>window_size=(768, 0)</code> on the <code>S</code> layers of the <code>"SSSL"</code> pattern: 3 of every 4 layers only look 768 tokens back, and only the periodic <code>L</code> layers (and always the last) pay for full context.`
+      : '';
+    if (mode === 'naive') {
+      caption.innerHTML = `<strong>Naive:</strong> every score is written to HBM, then the whole triangle is read <em>back</em> for softmax, then again for the ×V multiply. At this toy T=16 that's ${totalValid()} values; at nanochat's T=2,048 it's ~2.1M <em>per head, per batch row</em> — attention becomes memory-bound, and memory traffic, not math, sets the speed.` + winNote;
+    } else {
+      caption.innerHTML = `<strong>Flash:</strong> identical output, but the matrix never exists. Each 4×4 tile (real kernels: up to 128×128) is computed in SRAM and immediately folded into three running values per query row — the max <code>m</code>, the softmax denominator <code>ℓ</code>, and the output accumulator <code>O</code>. The <em>online softmax</em> trick makes this exact: when a new tile raises a row's max, the already-accumulated <code>ℓ</code> and <code>O</code> are rescaled by <code>exp(m_old − m_new)</code> before the tile is folded in. Peak score storage: one tile, no matter how long the sequence. (The backward pass recomputes tiles instead of storing them — trading cheap FLOPs for expensive memory.)` + winNote;
+    }
+    caption.innerHTML += ` <em>FA3 is this algorithm hand-tuned for Hopper GPUs; PyTorch's SDPA is a built-in fused version of the same idea — the code below picks whichever your hardware supports.</em>`;
+  }
+  function totalValid() {
+    let n = 0;
+    for (let i = 0; i < T; i++) for (let j = 0; j < T; j++) if (isValid(i, j)) n++;
+    return n;
+  }
+
+  function resetBoard() {
+    if (timer) { clearInterval(timer); timer = null; }
+    for (let i = 0; i < T; i++) for (let j = 0; j < T; j++) paint(cells[i][j], cellKind(i, j));
+    paintSram(false);
+    accBox.innerHTML = '<span style="color:#8a857d">running per-row state appears here</span>';
+    meterFill.style.width = '0%';
+    meterLabel.textContent = 'score values stored: 0';
+    statusBox.textContent = 'press ▶ Play';
+    setLegend();
+    setCaption();
+  }
+
+  function playNaive() {
+    const order = [];
+    for (let i = 0; i < T; i++) for (let j = 0; j < T; j++) if (isValid(i, j)) order.push([i, j]);
+    const total = order.length;
+    let idx = 0;
+    timer = setInterval(() => {
+      for (let s = 0; s < 6 && idx < total; s++, idx++) {
+        const [i, j] = order[idx];
+        paint(cells[i][j], 'stored');
+      }
+      meterFill.style.width = (idx / total * 100) + '%';
+      meterLabel.textContent = `score values stored: ${idx} / ${total}`;
+      statusBox.textContent = `computing row q${order[Math.min(idx, total - 1)][0]} — every score parked in HBM…`;
+      if (idx >= total) {
+        clearInterval(timer); timer = null;
+        statusBox.innerHTML = `Full triangle in HBM: <strong>${total} values</strong>. Now softmax (and then ×V) must read them all <em>back</em> — two more slow passes over memory. At T=2,048: ~2.1M values per head per row.`;
+      }
+    }, 90);
+  }
+
+  function playFlash() {
+    // Build tile list: row blocks top→bottom, tiles left→right, only tiles containing valid cells
+    const tiles = [];
+    for (let rb = 0; rb < T / TILE; rb++) {
+      for (let cb = 0; cb <= rb; cb++) {
+        let any = false;
+        const mask = [];
+        for (let a = 0; a < TILE; a++) {
+          mask.push([]);
+          for (let b = 0; b < TILE; b++) {
+            const v = isValid(rb * TILE + a, cb * TILE + b);
+            mask[a].push(v);
+            any = any || v;
+          }
+        }
+        if (any) tiles.push({ rb, cb, mask });
+      }
+    }
+    let idx = 0;
+    let prev = null;
+    timer = setInterval(() => {
+      if (prev) {
+        for (let a = 0; a < TILE; a++) for (let b = 0; b < TILE; b++)
+          if (prev.mask[a][b]) paint(cells[prev.rb * TILE + a][prev.cb * TILE + b], 'done');
+      }
+      if (idx >= tiles.length) {
+        clearInterval(timer); timer = null;
+        paintSram(false);
+        statusBox.innerHTML = `Done — same output as naive, but peak score storage was <strong>one ${TILE}×${TILE} tile</strong> in SRAM (real kernels: 128×128). HBM stored: <strong>0</strong> scores; only the final output O was written.`;
+        return;
+      }
+      const t = tiles[idx];
+      for (let a = 0; a < TILE; a++) for (let b = 0; b < TILE; b++)
+        if (t.mask[a][b]) paint(cells[t.rb * TILE + a][t.cb * TILE + b], 'active');
+      paintSram(true, t.mask);
+      const rows = Array.from({ length: TILE }, (_, a) => t.rb * TILE + a);
+      accBox.innerHTML = rows.map(r =>
+        `<span class="fa-chip pulse">q${r}: m ℓ O ⟳</span>`).join('') +
+        `<br><span style="color:#8a857d">tile ${t.cb + 1}/${t.rb + 1} of row block ${t.rb + 1} — rescale by exp(m_old−m_new), fold in, discard</span>`;
+      meterFill.style.width = '0%';
+      meterLabel.textContent = `score values stored: 0 · SRAM holds: ${TILE * TILE}`;
+      statusBox.textContent = `row block ${t.rb + 1}/${T / TILE} · tile ${t.cb + 1}: scores live only in SRAM; per-row running max/sum/output updated, tile thrown away.`;
+      prev = t;
+      idx++;
+    }, 380);
+  }
+
+  document.getElementById('flash-play').addEventListener('click', () => {
+    resetBoard();
+    statusBox.textContent = 'running…';
+    if (mode === 'naive') playNaive(); else playFlash();
+  });
+  document.getElementById('flash-reset').addEventListener('click', resetBoard);
+  root.querySelectorAll('[data-flash-mode]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      root.querySelectorAll('[data-flash-mode]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      mode = btn.dataset.flashMode;
+      resetBoard();
+    });
+  });
+  root.querySelectorAll('[data-flash-win]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      root.querySelectorAll('[data-flash-win]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      win = btn.dataset.flashWin;
+      resetBoard();
+    });
+  });
+  resetBoard();
+})();

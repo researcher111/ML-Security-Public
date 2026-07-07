@@ -396,6 +396,17 @@ ip-172-31-77-16
 because the instruction was inside a retrieved document, not a user message.
 The input guardrail never saw it.</pre>
 
+<div class="callout note">
+  <span class="label">expect this one to fail against a well-aligned model</span>
+  <p>Unlike the other four attacks, this one depends on the <em>model</em> choosing to obey an instruction it found inside a retrieved document. A model with strong <strong>injection-resistance training</strong> — the current UVA RC deployment of <code>Kimi K2.5</code> is one — will read the hijack line, recognize it as data rather than a command, and answer the vacation question normally without ever emitting the <code>TOOL_CALL</code>. When that happens the script prints:</p>
+<pre class="term-snippet">Stage 2 · ask the trigger query — vacation destinations
+Travel recommendations include Mars and Venus.
+
+<span class="term-comment">✗ the tool didn't fire. The LLM may have read the instruction but decided
+   not to act — try a more authoritative phrasing in the doc.</span></pre>
+  <p><strong>That is not a broken lab — it's the defense working.</strong> The <em>structural</em> vulnerability is unchanged and real: retrieved text still reaches the model in the user role with no provenance marker (that's what §5.1 shows), and a weaker or older model, or a more authoritative injection, will take the bait. What you're seeing is that whether the attack lands depends on the model's own refusal training — a defense that is, as §5.1 notes, "recent, partial, and bypassable." Treat a refusal as a prompt to iterate: rephrase the planted instruction to sound like sanctioned policy (see the blending example in <a href="#evasion-blending">§7.1</a>) and try again. Do <em>not</em> rely on model alignment as your only defense — fix the structure.</p>
+</div>
+
 <!-- ============================================================ -->
 <h2 id="attack-5">6 · Attack 5 · Filter bypass via encoding <span class="time-tag">~25 min</span></h2>
 
