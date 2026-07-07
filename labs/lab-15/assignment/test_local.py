@@ -2,7 +2,7 @@
 """Grade your Lab 15 secure twin locally — the same automated checks Gradescope
 runs (65 of 100 points; the write-up and a non-triviality review are by hand).
 
-Run it from the folder that holds secure_rag.py, 06_bypass.py, and writeup.md:
+Run it from the folder that holds secure_rag.py and writeup.md:
 
     python3 test_local.py
 
@@ -50,7 +50,7 @@ def main():
     print("=" * 68)
     auto = sum(t["max_score"] for t in data["tests"])
     print(f"       {data['score']:>5.1f}/{auto:<3}  automatic points "
-          f"(+ 35 manual: write-up & non-triviality)")
+          f"(+ 40 manual: write-up & non-triviality)")
     print("\nPer-check detail:\n")
     for t in data["tests"]:
         print(f"### {t['name']}")

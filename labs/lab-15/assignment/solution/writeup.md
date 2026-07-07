@@ -22,17 +22,19 @@ write-up are:
 (D3 diversity cap and D5 structural output filter are also implemented; see the
 file comments.)
 
-## (b) What blind spot does my bypass exploit?
+## (b) What structural blind spot do my defenses still leave?
 
-`06_bypass.py` defeats **D1**. The DLP is a *pattern matcher*: it strips only
-the secret shapes I enumerated. My bypass plants a credential in a format none
-of those regexes cover — `ROOTPW::7f3a-Zeta-Foxtrot-Prod` (no `@`, no
-`AKIA`/`sk_live` prefix, no `EXAMPLE-` hyphen shape, no `password:` line). The
-DLP passes it through untouched, it is indexed like any other chunk, and a
-plain question retrieves it verbatim. The output filter (D5) shares the same
-enumerated-shapes blind spot, so it doesn't catch it on the way out either.
-This is the exact failure mode §8 predicts for regex/DLP defenses: *the attacker
-adds one twist the matcher hasn't seen.*
+**D1 is only a pattern matcher.** The DLP strips the secret *shapes* I
+enumerated (`EXAMPLE-…`, `AKIA…`/`sk_live…`, emails, `password:` lines) — so a
+credential written in any format I didn't anticipate walks straight through. An
+attacker who plants a secret like `ROOTPW::7f3a-Zeta-Foxtrot-Prod` (no `@`, no
+key prefix, no `EXAMPLE-` hyphen shape, no `password:` line) gets it indexed
+untouched, and a plain question retrieves it verbatim. The output filter (D5)
+shares the same enumerated-shapes blind spot, so it doesn't catch it on the way
+out either. This is the exact failure mode §8 predicts for regex/DLP defenses:
+*the attacker adds one twist the matcher hasn't seen.* And because I left
+ingestion provenance (Attack 2) un-hardened, nothing stops that poisoned upload
+from reaching the index in the first place.
 
 ## (c) What would the next defense look like — and its new attack class?
 

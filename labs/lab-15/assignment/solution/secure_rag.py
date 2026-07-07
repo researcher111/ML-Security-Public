@@ -12,8 +12,9 @@ Defenses implemented here:
     D4 · path allowlist + normalize closes Attack 4 (retrieval hijacking)
     D5 · structural output filter  closes Attack 5 (filter bypass)
 
-Deliberately NOT hardened: ingestion provenance (Attack 2). Left open so the
-companion 06_bypass.py can demonstrate a DLP-evasion upload — see writeup.md.
+Deliberately NOT hardened: ingestion provenance (Attack 2). Left open, and
+called out in writeup.md as the seam that keeps the DLP defeatable — an
+attacker can still upload a secret in a format the DLP regexes don't cover.
 
 Run on a DIFFERENT port from the baseline:
 
@@ -379,7 +380,7 @@ def query(req: QueryIn) -> dict[str, Any]:
 @app.post("/ingest")
 def ingest(req: IngestIn) -> dict[str, Any]:
     # NOTE: ingestion provenance (Attack 2) is intentionally left un-hardened in
-    # this reference — see writeup.md. It is the seam 06_bypass.py rides through.
+    # this reference — see writeup.md for the blind spot this leaves.
     n = ingest_text(req.source, req.body)
     return {"added": n, "total_chunks": len(CHUNKS)}
 

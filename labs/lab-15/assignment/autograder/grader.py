@@ -8,18 +8,17 @@ it quotes retrieved context verbatim and obeys read_file tool-calls — and then
 runs the attacks against the student's secure_rag through FastAPI's in-process
 TestClient. A working defense is what stops the stub from leaking.
 
-Auto-graded (65 pts):
+Auto-graded (60 pts):
     A · secure_rag imports, exposes the surface, answers a benign query   10
-    B · two or more of the five §8 defenses are actually effective        15
-    C · the original lab attacks fail against the twin (leak + hijack)     20
-    D · 06_bypass.py exists, is valid Python, and exits 0 vs the twin      20
+    B · two or more of the five §8 defenses are actually effective        20
+    C · the original lab attacks fail against the twin (>=2 of 5)          30
 
-Graded manually (35 pts): the write-up (blind-spot + next-defense) and a human
-sanity check that the defenses are non-trivial. The grader reports write-up
-structure to help, but assigns it no automatic points.
+Graded manually (40 pts): the write-up (structural blind spot + next-defense)
+and a human sanity check that the defenses are non-trivial. The grader reports
+write-up structure to help, but assigns it no automatic points.
 
 Local use:
-    python3 grader.py --submission ../solution          # -> 65/65 auto
+    python3 grader.py --submission ../solution          # -> 60/60 auto
     python3 grader.py --submission ../../server          # baseline -> low
 
 Requires: fastapi, httpx, uvicorn, pydantic (see setup.sh).
@@ -81,46 +80,6 @@ Verify. Passwords expire every 90 days. If locked out, call extension 4357.
 """,
 }
 
-# A _helpers.py that routes ask/ingest/reset through the in-process TestClient
-# instead of real HTTP, so the student's 06_bypass.py runs with no live server.
-HELPERS_SRC = '''\
-"""Grader shim: same surface as the lab _helpers, backed by a TestClient."""
-import sys
-_CLIENT = None  # injected by the grader as _helpers._CLIENT
-
-
-def _client():
-    if _CLIENT is None:
-        raise RuntimeError("grader did not inject a TestClient")
-    return _CLIENT
-
-
-def ask(query):
-    r = _client().post("/query", json={"query": query})
-    r.raise_for_status()
-    return r.json()
-
-
-def ingest(source, body, token=None):
-    payload = {"source": source, "body": body}
-    if token is not None:
-        payload["token"] = token
-    r = _client().post("/ingest", json=payload)
-    r.raise_for_status()
-    return r.json()
-
-
-def reset():
-    r = _client().post("/reset")
-    r.raise_for_status()
-    return r.json()
-
-
-def banner(label):
-    print("\\n" + "=" * 60 + "\\n" + label + "\\n" + "=" * 60)
-'''
-
-
 # ---------------------------------------------------------------------------
 # The stub LLM: a faithful, compliant, vulnerable model.
 # ---------------------------------------------------------------------------
@@ -161,19 +120,15 @@ def find_file(root, name):
     return None
 
 
-def build_scaffold(secure_path, bypass_path):
-    """Create tmp/server/secure_rag.py + tmp/data/*.md (+ attacks/) so the
-    student's DATA = HERE.parent/'data' resolves to our seeded corpus."""
+def build_scaffold(secure_path):
+    """Create tmp/server/secure_rag.py + tmp/data/*.md so the student's
+    DATA = HERE.parent/'data' resolves to our seeded corpus."""
     tmp = tempfile.mkdtemp(prefix="lab15_grade_")
     (Path(tmp) / "server").mkdir()
     (Path(tmp) / "data").mkdir()
-    (Path(tmp) / "attacks").mkdir()
     shutil.copy(secure_path, Path(tmp) / "server" / "secure_rag.py")
     for name, body in CORPUS.items():
         (Path(tmp) / "data" / name).write_text(body, encoding="utf-8")
-    (Path(tmp) / "attacks" / "_helpers.py").write_text(HELPERS_SRC, encoding="utf-8")
-    if bypass_path:
-        shutil.copy(bypass_path, Path(tmp) / "attacks" / "06_bypass.py")
     return tmp
 
 
@@ -205,7 +160,6 @@ def main():
 
     sub = os.path.abspath(args.submission)
     secure_path = find_file(sub, "secure_rag.py")
-    bypass_path = find_file(sub, "06_bypass.py")
     writeup_path = find_file(sub, "writeup.md")
 
     if secure_path is None:
@@ -216,9 +170,8 @@ def main():
         return
 
     # Build the corpus scaffold and import the student's module.
-    scaffold = build_scaffold(secure_path, bypass_path)
+    scaffold = build_scaffold(secure_path)
     sys.path.insert(0, str(Path(scaffold) / "server"))
-    sys.path.insert(0, str(Path(scaffold) / "attacks"))
     try:
         sr = load_module(str(Path(scaffold) / "server" / "secure_rag.py"), "secure_rag")
     except Exception:
@@ -282,19 +235,18 @@ def main():
     # ---- run the defense probes (shared by B and C) -----------------------
     results = run_defense_probes(sr, scaffold)
 
-    # ---- Category B · >=2 non-trivial defenses (15) -----------------------
+    # ---- Category B · >=2 non-trivial defenses (20) -----------------------
     effective = [k for k, v in results.items() if v["effective"]]
-    b_units = min(len(effective), 2)
-    b_score = 15.0 * b_units / 2
+    b_score = 10.0 * min(len(effective), 2)  # 10 each, capped at 2
     b_lines = [f"{k}: {'EFFECTIVE' if v['effective'] else 'not detected'} — {v['note']}"
                for k, v in results.items()]
     b_lines.append(f"\n{len(effective)} of 5 defenses effective; need >=2 for full credit.")
-    add("B · two or more §8 defenses are effective", b_score, 15, "\n".join(b_lines))
+    add("B · two or more §8 defenses are effective", b_score, 20, "\n".join(b_lines))
 
-    # ---- Category C · original attacks fail (20) --------------------------
-    # Fair to whichever defenses the student chose: award 10 for each of ANY two
+    # ---- Category C · original attacks fail (30) --------------------------
+    # Fair to whichever defenses the student chose: award 15 for each of ANY two
     # lab attacks that fail against the twin (leak / poison / collision / hijack
-    # / filter bypass), capped at 20.
+    # / filter bypass), capped at 30.
     attack_labels = {
         "D1_leakage": "Attack 1 · knowledge-base leakage",
         "D2_ingest": "Attack 2 · ingestion poisoning",
@@ -303,17 +255,13 @@ def main():
         "D5_output": "Attack 5 · filter bypass",
     }
     neutralized = [k for k in attack_labels if results[k]["effective"]]
-    c_score = 10.0 * min(len(neutralized), 2)
+    c_score = 15.0 * min(len(neutralized), 2)
     c_lines = [f"{attack_labels[k]}: "
                f"{'NEUTRALIZED' if results[k]['effective'] else 'still succeeds'}"
                for k in attack_labels]
     c_lines.append(f"\n{len(neutralized)} lab attacks neutralized; "
-                   "need >=2 for full credit (10 each).")
-    add("C · original lab attacks fail against the twin", c_score, 20, "\n".join(c_lines))
-
-    # ---- Category D · 06_bypass.py succeeds (20) --------------------------
-    d_score, d_note = grade_bypass(sr, scaffold, bypass_path)
-    add("D · 06_bypass.py is valid and exits 0 vs the twin", d_score, 20, d_note)
+                   "need >=2 for full credit (15 each).")
+    add("C · original lab attacks fail against the twin", c_score, 30, "\n".join(c_lines))
 
     # ---- write-up (manual) ------------------------------------------------
     _emit_writeup_info(add, writeup_path)
@@ -417,64 +365,22 @@ def run_defense_probes(sr, scaffold):
     return out
 
 
-def grade_bypass(sr, scaffold, bypass_path):
-    """Import the student's 06_bypass, inject a TestClient-backed _helpers, and
-    award full credit if it returns exit code 0 (secret exfiltrated)."""
-    from fastapi.testclient import TestClient
-    if bypass_path is None:
-        return 0.0, "No 06_bypass.py found in your submission."
-    # syntax check
-    try:
-        compile(Path(bypass_path).read_text(encoding="utf-8"), "06_bypass.py", "exec")
-    except SyntaxError:
-        return 0.0, "06_bypass.py has a syntax error:\n" + traceback.format_exc()
-
-    try:
-        with TestClient(sr.app) as client:
-            client.post("/reset")
-            import _helpers  # our shim, already on sys.path
-            _helpers._CLIENT = client
-            # import the bypass module WITHOUT running its __main__ guard
-            spec = importlib.util.spec_from_file_location("bypass06", bypass_path)
-            mod = importlib.util.module_from_spec(spec)
-            sys.modules["bypass06"] = mod
-            rc = None
-            try:
-                spec.loader.exec_module(mod)  # defines main(); guard won't run
-                if hasattr(mod, "main") and callable(mod.main):
-                    rc = mod.main()
-                else:
-                    rc = 0  # ran to completion at import with no main()
-            except SystemExit as e:  # bypass called sys.exit() at import
-                rc = e.code if isinstance(e.code, int) else (0 if not e.code else 1)
-        if rc == 0:
-            return 20.0, "06_bypass.py ran against the secure twin and exited 0 "
-        return 8.0, (f"06_bypass.py is valid and runs but returned exit {rc!r} "
-                     "(it did not defeat the twin under the deterministic stub; "
-                     "note the stub cannot simulate multi-turn model cleverness — "
-                     "the instructor may re-check against the live model).")
-    except Exception:
-        return 8.0, ("06_bypass.py is valid Python but errored when run:\n"
-                     + traceback.format_exc()
-                     + "\n(Partial credit; instructor should verify manually.)")
-
-
 def _emit_writeup_info(add, writeup_path):
     if writeup_path is None:
-        add("Write-up · structure (manual grading)", 0, 0,
-            "No writeup.md found. The 35-pt write-up is graded by hand.")
+        add("Write-up · structure (manual grading, 40 pts)", 0, 0,
+            "No writeup.md found. The 40-pt write-up is graded by hand.")
         return
     text = Path(writeup_path).read_text(encoding="utf-8", errors="replace").lower()
     sections = {
-        "(a) defense closes an attack": any(k in text for k in
+        "(a) which attacks the defenses close": any(k in text for k in
             ("close", "defend", "attack 1", "attack 2", "attack 3", "attack 4", "attack 5")),
-        "(b) blind spot the bypass exploits": any(k in text for k in
-            ("blind spot", "bypass", "evade", "evasion")),
-        "(c) next defense": any(k in text for k in
+        "(b) the structural blind spot the defenses still leave": any(k in text for k in
+            ("blind spot", "still", "would get through", "evade", "evasion", "limitation")),
+        "(c) the next defense and its new attack class": any(k in text for k in
             ("next defense", "next attack", "defense in depth", "beyond")),
     }
     lines = [f"{'present' if v else 'MISSING'} — {k}" for k, v in sections.items()]
-    add("Write-up · structure (manual grading, 35 pts)", 0, 0,
+    add("Write-up · structure (manual grading, 40 pts)", 0, 0,
         "writeup.md found. Structure heuristic (no auto points; graded by hand):\n"
         + "\n".join(lines))
 
@@ -486,7 +392,7 @@ def write(results_path, tests):
         "score": round(total, 2),
         "tests": tests,
         "output": (f"Autograder: {total:g}/{out_of} automatic points. "
-                   "The write-up (35 pts) and a non-triviality check are graded "
+                   "The write-up (40 pts) and a non-triviality check are graded "
                    "by hand. Attacks were run against a deterministic LLM stub, "
                    "so behavioral results are reproducible but cannot capture "
                    "multi-turn model cleverness."),
