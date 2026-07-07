@@ -777,9 +777,29 @@ network identity.** Submit reimbursement via Concur within 30 days.
 
 <ol>
   <li><strong><code>secure_rag.py</code></strong> — same surface as <code>baseline_rag.py</code>, two or more of the fixes from §8 implemented. Run on a different port from the baseline. Document each fix with a comment citing the attack it defends.</li>
-  <li><strong>Bypass one of your fixes.</strong> Write <code>attacks/06_bypass.py</code> targeting your secure_rag. The bypass should exit 0 against your defense.</li>
+  <li><strong>Bypass one of your fixes.</strong> Write <code>06_bypass.py</code> targeting your secure_rag (a <code>main() -&gt; int</code> that exits 0 when the bypass succeeds; import helpers with <code>from _helpers import ask, ingest, reset, banner</code>).</li>
   <li><strong><code>writeup.md</code></strong> — one page. Three sections: <em>(a)</em> which Lab 15 attack your defense closes, <em>(b)</em> what blind spot your bypass exploits, <em>(c)</em> what the next defense beyond yours would look like.</li>
 </ol>
+
+<h3>Files &amp; the autograder</h3>
+<p>
+  <a class="inline-dl" href="assignment/README.md" download>↓ README.md</a>
+  <a class="inline-dl" href="assignment/test_local.py" download>↓ test_local.py</a>
+  <a class="inline-dl" href="assignment/autograder/autograder.zip" download>↓ autograder.zip</a>
+  <a class="inline-dl" href="assignment/solution/secure_rag.py" download>↓ reference secure_rag.py</a>
+</p>
+<p>The first <strong>65 points are autograded</strong> and you can run the exact same checks yourself. From the folder holding your three files:</p>
+<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">pip install fastapi httpx uvicorn pydantic</span>
+<span class="term-comment">$</span> <span class="term-cmd">python3 test_local.py .</span>
+[PASS]  10.0/10   A · imports, exposes surface, answers a benign query
+[PASS]  15.0/15   B · two or more §8 defenses are effective
+[PASS]  20.0/20   C · original lab attacks fail against the twin
+[PASS]  20.0/20   D · 06_bypass.py is valid and exits 0 vs the twin
+        65.0/65   automatic points (+ 35 manual: write-up &amp; non-triviality)</pre>
+<div class="callout note">
+  <span class="label">how the autograder runs your attacks without an LLM</span>
+  <p>The five attacks need a live model, which the grader doesn't have. So it swaps in a <strong>deterministic stub</strong> that acts like a faithful, compliant, vulnerable LLM — it quotes retrieved context verbatim and obeys <code>read_file</code> tool-calls — and runs the attacks against your <code>secure_rag</code> through FastAPI's in-process <code>TestClient</code>. A working defense is exactly what stops the stub from leaking. Results are reproducible, but the stub can't simulate multi-turn model cleverness, so a bypass that leans on real-model reasoning may score partial and be re-checked by hand. The two write-up rows (35 pts) are graded manually.</p>
+</div>
 
 <h3>Rubric</h3>
 <table>
