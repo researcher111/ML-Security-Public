@@ -290,7 +290,7 @@ def retrieve(query: str, top_k: int = 4, w_kw: float = 0.6) -> list[dict]:
   <div class="viz-title">Interactive · score matrix · poisoned doc vs five unrelated queries</div>
   <div class="viz-description">Rows are documents in the corpus (the first row is the poisoned <code>mc1_security_handbook.md</code>; the rest are normal). Columns are five queries on five unrelated topics. Each cell shows the hybrid retrieval score; cells with a bold border are in the current top-K. Watch how the poisoned row stays hot across <em>most</em> columns while clean rows light up only in their topic column.</div>
 </div>
-<p class="viz-caption">Dial <code>top_K</code> down and the collision becomes more devastating — at K=1 the poisoned doc is the entire context for 4/5 queries. <strong>The structural defense:</strong> cap top-K per <code>doc_path</code> (e.g., 2). That single line of code closes most of this attack class — and creates a follow-on attack where the adversary uploads three documents instead of one.</p>
+<p class="viz-caption">Dial <code>top_K</code> down and the collision becomes more devastating — at K=1 the poisoned doc is the entire context for 4/5 queries. <strong>The structural defense:</strong> limit how many chunks any single document can put into the top-K — say, at most 2. One line of code, and a lone poisoned document can no longer fill the context. The catch: the attacker just splits the same payload across three documents, so no single one hits the per-document cap.</p>
 
 <h3>4.2 Run it</h3>
 <pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">python attacks/03_embedding_collision.py</span>
