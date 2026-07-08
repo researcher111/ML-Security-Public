@@ -205,13 +205,13 @@ Nmap done: 256 IP addresses (3 hosts up, 0.762 seconds elapsed)</pre>
 
 <p>Three live hosts: <code>.1</code> (the cyber-range gateway), <code>.5</code> (you, from the previous step), and <code>.6</code> — the one that isn't either of those. That's your <strong>target</strong>.</p>
 
-<p><strong>2c · Save the target IP into a shell variable.</strong> Every command in the rest of this lab uses <code>$TARGET</code> instead of hard-coding the address. That way you can copy-paste examples without editing them — and so can your teammate.</p>
+<p><strong>2c · Save the target IP into a shell variable.</strong> Every command in the rest of this lab uses <code>$TARGET</code> instead of hard-coding the address. That way you can copy-paste examples without editing them — and so can your teammate. In the cyber range the target VM answers to the hostname <code>target.example.com</code>, so rather than copy the IP by hand you can resolve it straight out of a single <code>ping</code>:</p>
 
-<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">export TARGET=10.0.0.6</span>
+<pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">export TARGET=$(ping -c 1 target.example.com | grep -oE '[0-9]+(\.[0-9]+){3}' | head -1)</span>
 <span class="term-comment">$</span> <span class="term-cmd">echo $TARGET</span>
 <span class="term-hl">10.0.0.6</span></pre>
 
-<p><code>export</code> places the variable into the shell's environment so child processes (like <code>nc</code>, <code>nmap</code>, and <code>msfconsole</code>) inherit it. If <code>echo $TARGET</code> prints your target IP back, you're good. Write the IP in your shared team notes so your teammate has it too.</p>
+<p>The <code>ping</code> output starts <code>PING target.example.com (10.0.0.6) ...</code>; the <code>grep</code>/<code>head</code> pulls the first IPv4 address out of that line and <code>export</code> stores it. <code>export</code> places the variable into the shell's environment so child processes (like <code>nc</code>, <code>nmap</code>, and <code>msfconsole</code>) inherit it. If <code>echo $TARGET</code> prints your target IP back, you're good — write it in your shared team notes so your teammate has it too. If it prints nothing, the name didn't resolve; fall back to the ping sweep above and <code>export TARGET=<span class="term-cmd">&lt;the .6 address&gt;</span></code> directly.</p>
 
 <div class="exercise">
   <div class="ex-label">Try it · subnet math</div>

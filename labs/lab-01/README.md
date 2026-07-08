@@ -133,11 +133,15 @@ Nmap done: 256 IP addresses (3 hosts up, 0.762 seconds elapsed)
 
 #### 2.3c Save the target IP into a shell variable
 
+In the cyber range the target VM is registered under the hostname `target.example.com`, so instead of copying the IP by hand you can resolve it from that name. Pull the address straight out of a single `ping`:
+
 ```text
-$ export TARGET=10.0.0.6
+$ export TARGET=$(ping -c 1 target.example.com | grep -oE '[0-9]+(\.[0-9]+){3}' | head -1)
 $ echo $TARGET
 10.0.0.6
 ```
+
+The `ping` output begins `PING target.example.com (10.0.0.6) ...`; the `grep`/`head` pulls the first IPv4 address out of that line and `export` stores it. If `echo $TARGET` prints nothing, the name didn't resolve — fall back to the ping sweep in 2.3b and `export TARGET=<the .6 address>` directly.
 
 `export` places the variable in the shell's environment so `nc`, `nmap`, and `msfconsole` inherit it. Every command in the rest of this lab uses `$TARGET`.
 
