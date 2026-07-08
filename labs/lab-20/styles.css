@@ -1,0 +1,181 @@
+/* ============================================================ */
+/* Bonus lab — microfake · per-lab styles.                       */
+/* Palette / typography / chrome / .viz / .callout / TPS /       */
+/* presentation mode / glossary widget all live in              */
+/* ../_shared/lab-base.css. Per-lab-only rules below.            */
+/* ============================================================ */
+
+/* KaTeX display-math blocks (math goes in <p>, never <pre>/<code>) */
+.eq { margin: 16px 0; overflow-x: auto; }
+.eq-note { text-align: center; font-family: var(--serif); font-size: 14px; color: var(--ink-soft); margin: -6px 0 16px; }
+
+/* WIP markers for sections built incrementally */
+.wip {
+  font-family: var(--serif);
+  font-size: 15px;
+  color: var(--ink-soft);
+  background: var(--bg-elev);
+  border: 1px dashed var(--rule);
+  border-left: 3px solid var(--accent-soft);
+  border-radius: 0 6px 6px 0;
+  padding: 12px 16px;
+  margin: 10px 0 24px;
+}
+.wip strong { color: var(--ink); }
+
+/* ============================================================ */
+/* §try-it · 2D diffusion sampler                                 */
+/* ============================================================ */
+.df-canvas {
+  display: block;
+  width: 100%;
+  max-width: 420px;
+  height: auto;
+  margin: 0 auto;
+  background: var(--bg-viz);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+}
+.df-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  margin: 14px 0 8px;
+  justify-content: center;
+}
+.df-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--sans);
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+.df-field select {
+  font-family: var(--mono);
+  font-size: 13px;
+  padding: 3px 6px;
+  border: 1px solid var(--accent-soft);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--ink);
+}
+.df-field input[type="range"] { width: 130px; accent-color: var(--accent); }
+.df-check { gap: 6px; }
+.df-mono { font-family: var(--mono); font-variant-numeric: tabular-nums; min-width: 20px; text-align: right; }
+.df-readout {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--ink);
+  text-align: center;
+  margin-top: 6px;
+  min-height: 1.4em;
+}
+.df-readout .df-done { color: #2f6b4a; font-weight: 700; }
+
+body.presentation-mode .df-canvas { max-width: 560px; }
+
+/* ============================================================ */
+/* §2 · face-swap widget                                          */
+/* ============================================================ */
+.fs-stage {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px 14px;
+  margin: 8px 0 6px;
+}
+.fs-cell { margin: 0; text-align: center; }
+.fs-cell figcaption {
+  font-family: var(--sans);
+  font-size: 11.5px;
+  color: var(--ink-mute);
+  margin-top: 4px;
+}
+.fs-face {
+  width: 120px; height: 120px;
+  image-rendering: pixelated;
+  background: var(--bg-viz);
+  border-radius: 6px;
+}
+.fs-arrow {
+  font-family: var(--mono);
+  font-size: 15px;
+  color: var(--ink-mute);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  text-align: center;
+}
+.fs-arrow-label {
+  font-size: 10px;
+  line-height: 1.1;
+  color: var(--accent);
+  font-weight: 600;
+}
+body.presentation-mode .fs-face { width: 150px; height: 150px; }
+
+/* ============================================================ */
+/* §2 · network-architecture diagrams (nodes + lines)            */
+/* ============================================================ */
+.arch-svg {
+  display: block;
+  width: 100%;
+  max-width: 720px;
+  height: auto;
+  margin: 0 auto;
+  background: var(--bg-viz);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+}
+.arch-edge { stroke: var(--ink-mute); stroke-width: 0.7; opacity: 0.28; }
+.arch-edge.eA { stroke: #b14a2e; opacity: 0.3; }
+.arch-edge.eB { stroke: #3f8c63; opacity: 0.32; }
+.arch-edge.hl { stroke: var(--accent); stroke-width: 1.8; opacity: 0.95; }
+.arch-node { stroke: var(--ink); stroke-width: 1.4; cursor: pointer; transition: fill 0.12s; }
+.arch-node.neuron { fill: #fff3d6; }
+.arch-node.data { fill: #fffefa; stroke: var(--ink-mute); }
+.arch-node.code { fill: #fde0d2; stroke: var(--accent); stroke-width: 2; }
+.arch-node:hover { fill: var(--accent-soft); }
+.arch-label { font-family: var(--mono); font-size: 11px; fill: var(--ink-mute); }
+.arch-band { font-family: var(--sans); font-size: 11px; font-weight: 700; letter-spacing: 0.06em; fill: var(--ink-soft); }
+.arch-note { font-family: var(--mono); font-size: 10.5px; fill: var(--accent); }
+
+/* ============================================================ */
+/* §5 · video widget (two side-by-side animations)               */
+/* ============================================================ */
+.vid-stage { display: flex; flex-wrap: wrap; gap: 14px 24px; justify-content: center; align-items: flex-start; margin: 8px 0 6px; }
+.vid-cell { margin: 0; text-align: center; }
+.vid-cell figcaption { font-family: var(--sans); font-size: 11.5px; color: var(--ink-mute); margin-top: 5px; max-width: 200px; }
+.vid-canvas { width: 180px; height: 180px; image-rendering: pixelated; background: var(--bg-viz); border: 1px solid var(--rule); border-radius: 6px; }
+body.presentation-mode .vid-canvas { width: 230px; height: 230px; }
+
+/* ============================================================ */
+/* §6 · frequency-fingerprint widget                             */
+/* ============================================================ */
+.fft-stage { display: flex; flex-wrap: wrap; gap: 14px 24px; justify-content: center; align-items: flex-start; margin: 8px 0 6px; }
+.fft-cell { margin: 0; text-align: center; }
+.fft-cell figcaption { font-family: var(--sans); font-size: 11.5px; color: var(--ink-mute); margin-top: 5px; }
+.fft-canvas { width: 200px; height: 200px; image-rendering: pixelated; border: 1px solid var(--rule); border-radius: 6px; }
+body.presentation-mode .fft-canvas { width: 250px; height: 250px; }
+
+/* ============================================================ */
+/* "Now you run it on the HPC cluster" handoff blocks           */
+/* ============================================================ */
+.callout.hpc-run { background: #f2f7f6; border-left: 3px solid #2f7d6e; }
+.callout.hpc-run .label { color: #2f7d6e; }
+.callout.hpc-run pre { margin: 10px 0; }
+.callout.hpc-run pre code { font-size: 12.5px; line-height: 1.5; }
+.hpc-look { font-size: 14.5px; }
+.hpc-look strong { color: #2f7d6e; }
+.hpc-example { margin: 12px 0 4px; text-align: center; }
+.hpc-example img {
+  max-width: 100%; border: 1px solid var(--rule); border-radius: 6px;
+  image-rendering: pixelated; background: var(--bg-viz);
+}
+.hpc-example figcaption {
+  font-family: var(--sans); font-size: 11.5px; color: var(--ink-mute); margin-top: 5px;
+}
+body.presentation-mode .callout.hpc-run pre code { font-size: 15px; }
