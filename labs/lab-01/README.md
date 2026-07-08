@@ -375,6 +375,15 @@ hostname
 exit
 ```
 
+> **If you see `session closed`** (for example, you typed `exit` or the connection dropped), you're back at the `msf6` prompt but the shell is gone. List the sessions Metasploit is still tracking, then re-attach to the one you want:
+>
+> ```
+> msf6 exploit(unix/ftp/vsftpd_234_backdoor) > sessions        # list open sessions
+> msf6 exploit(unix/ftp/vsftpd_234_backdoor) > sessions 1      # re-select session 1
+> ```
+>
+> If `sessions` shows an empty list, all shells are closed — just `run` the exploit again to open a new one.
+
 ### 5.5 What did Metasploit actually do?
 
 It connected to port 21, sent `USER` with a `:)` suffix and `PASS` with a junk value, then opened a TCP connection to port 6200 and attached it to your terminal as a managed session. It is **exactly** the manual exploit you ran in Part 4 — wrapped in a session manager, a payload selector, and a logging system.

@@ -251,6 +251,7 @@ def preprocess(df, encoders=None, scaler=None):
 <p>The whole lab — build, break, and secure — runs from <strong>one command</strong>. <code>run.sh</code> creates a local venv, installs the three dependencies, and executes every step with headings:</p>
 <pre class="term-snippet"><span class="term-comment">$</span> <span class="term-cmd">cd Class/labs/lab-16</span>
 <span class="term-comment">$</span> <span class="term-cmd">module load miniforge</span>   <span class="term-comment"># Rivanna only · gives you Python 3.13 (skip if you already have 3.9+)</span>
+<span class="term-comment">$</span> <span class="term-cmd">chmod +x ./run.sh</span>     <span class="term-comment"># make the script executable (only needed once)</span>
 <span class="term-comment">$</span> <span class="term-cmd">./run.sh</span>              <span class="term-comment"># or: ./run.sh build | break | secure</span></pre>
 
 <p>Prefer to run each step yourself and watch it? Here is the same thing by hand — start with <code>build</code>:</p>

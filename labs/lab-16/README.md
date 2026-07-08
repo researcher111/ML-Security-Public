@@ -38,6 +38,7 @@ lab-16/
 ```bash
 cd Class/labs/lab-16
 module load miniforge     # Rivanna only — gives you Python 3.13 (skip elsewhere if you already have 3.9+)
+chmod +x ./run.sh         # make the script executable (only needed once)
 ./run.sh                  # venv + install + build → break → secure, all of it
 ```
 
