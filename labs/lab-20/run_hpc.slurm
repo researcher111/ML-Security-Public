@@ -2,7 +2,10 @@
 #SBATCH --job-name=microfake
 #SBATCH --account=ds6042
 #SBATCH --partition=gpu
-#SBATCH --gres=gpu:1
+# Request an A100 (compute capability 8.0). The NGC pytorch/2.11.0 container
+# ships CUDA kernels for CC >= 7.5 only, so the older V100s (CC 7.0) in the
+# general gpu pool crash with "no kernel image is available". a40/a6000 also work.
+#SBATCH --gres=gpu:a100:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=16G
 #SBATCH --time=00:20:00

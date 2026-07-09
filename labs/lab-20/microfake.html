@@ -337,8 +337,8 @@ squeue --me                                      # wait until it leaves the queu
 
 # 3 · when it finishes, from your laptop:
 scp &lt;id&gt;@login.hpc.virginia.edu:~/lab-20/results.png .</code></pre>
-  <p class="keep-in-present">Prefer a live shell on a GPU machine instead of a batch job? Ask Slurm for one — this drops you onto a compute node with a GPU for an hour, where you can run the <code>apptainer exec</code> command from <code>run_hpc.slurm</code> directly and iterate:</p>
-  <pre><code class="language-bash">srun -A ds6042 -p interactive --gres=gpu:1 -c 4 --mem=16G -t 01:00:00 --pty bash
+  <p class="keep-in-present">Prefer a live shell on a GPU machine instead of a batch job? Ask Slurm for one — this drops you onto a compute node with a GPU for an hour, where you can run the <code>apptainer exec</code> command from <code>run_hpc.slurm</code> directly and iterate. Request an <strong>A100</strong> (<code>gpu:a100:1</code>): the <code>pytorch/2.11.0</code> container has no CUDA kernels for the older V100s and will crash with <em>"no kernel image is available"</em> on one.</p>
+  <pre><code class="language-bash">srun -A ds6042 -p interactive --gres=gpu:a100:1 -c 4 --mem=16G -t 01:00:00 --pty bash
 # prompt changes from login node to a udc-* compute node — you're on the GPU machine
 module load apptainer/1.4.5 pytorch/2.11.0
 apptainer exec --nv "$CONTAINERDIR/pytorch-2.11.0.sif" python faceswap.py --a 7 --b 21</code></pre>
