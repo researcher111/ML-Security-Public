@@ -17,7 +17,21 @@ the decoders. Everything you need ships in this folder — no downloads, no
 
 ## Run it in 3 steps
 
-From a login node (`ssh <your-id>@login.hpc.virginia.edu`), in this folder:
+Connecting: off campus, turn on the UVA VPN (UVA Anywhere) first — without it
+the cluster won't answer. Then `ssh <your-id>@login.hpc.virginia.edu` (UVA
+password + Duo push). If this folder isn't on the cluster yet, pull the lab zip
+straight onto the login node — no scp needed:
+
+```bash
+mkdir -p lab-20 && cd lab-20
+wget https://researcher111.github.io/ML-Security-Public/labs/lab-20/lab-20-code.zip
+unzip lab-20-code.zip
+```
+
+(Or, if you already have the files on your laptop: `scp faceswap.py
+faces_all.npz run_faceswap.slurm <your-id>@login.hpc.virginia.edu:~/lab-20/`.)
+
+From the login node, in this folder:
 
 ```bash
 sbatch run_faceswap.slurm          # 1. submit to a GPU node

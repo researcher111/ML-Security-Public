@@ -336,6 +336,48 @@
     const openInp  = document.getElementById('fs-open');
     const readout = document.getElementById('fs-readout');
 
+    // --- stage-2 mini net: pixel squares → frozen edges → two live code neurons ---
+    // Squares are data, circles are learned-layer outputs (the lab-wide convention).
+    // The edges are drawn once and never touched again — they ARE the frozen weights;
+    // only the two code neurons (fill + number) update as the input changes.
+    const encSvg = document.getElementById('fs-enc-svg');
+    let encUI = null;
+    if (encSvg) {
+      const NS = 'http://www.w3.org/2000/svg';
+      const mk = (tag, attrs) => { const el = document.createElementNS(NS, tag); for (const k in attrs) el.setAttribute(k, attrs[k]); encSvg.appendChild(el); return el; };
+      const sqY = [30, 62, 94, 126, 158], cY = [66, 130], sqX = 30, cX = 178;
+      sqY.forEach((y, i) => cY.forEach(cy => mk('line', {
+        x1: sqX + 9, y1: y, x2: cX - 14, y2: cy,
+        stroke: i >= 3 ? '#a09a8e' : '#ddd7ca', 'stroke-width': i >= 3 ? 1.6 : 1
+      })));
+      sqY.forEach((y, i) => mk('rect', {
+        x: sqX - 9, y: y - 9, width: 18, height: 18, rx: 3,
+        fill: '#ffffff', stroke: i >= 3 ? '#8a857d' : '#c9c3b6', 'stroke-width': 1.2
+      }));
+      mk('text', { x: sqX + 1, y: sqY[2] + 21, 'text-anchor': 'middle', class: 'fs-svg-dots' }).textContent = '⋮';
+      mk('text', { x: sqX, y: 192, 'text-anchor': 'middle', class: 'fs-svg-label' }).textContent = 'x · 64 pixels';
+      mk('text', { x: (sqX + cX) / 2, y: 18, 'text-anchor': 'middle', class: 'fs-svg-label' }).textContent = 'w · frozen';
+      const circles = [], vals = [];
+      cY.forEach((cy, i) => {
+        circles.push(mk('circle', { cx: cX, cy, r: 13, fill: '#f0eee5', stroke: '#b14a2e', 'stroke-width': 1.6 }));
+        mk('text', { x: cX + 20, y: cy + 4, class: 'fs-svg-label' }).textContent = i === 0 ? 'smile' : 'open';
+        vals.push(mk('text', { x: cX, y: cy + 30, 'text-anchor': 'middle', class: 'fs-svg-val' }));
+      });
+      mk('text', { x: cX, y: 192, 'text-anchor': 'middle', class: 'fs-svg-label' }).textContent = 'code z';
+      encUI = { circles, vals };
+    }
+    function updateEnc(z) {
+      if (!encUI) return;
+      z.forEach((v, i) => {
+        const mag = Math.min(1, Math.abs(v));
+        const fill = v > 0.05 ? 'rgba(253,224,210,' + (0.35 + 0.65 * mag).toFixed(2) + ')'
+                   : v < -0.05 ? 'rgba(213,230,220,' + (0.35 + 0.65 * mag).toFixed(2) + ')'
+                   : '#f0eee5';
+        encUI.circles[i].setAttribute('fill', fill);
+        encUI.vals[i].textContent = v.toFixed(2);
+      });
+    }
+
     const G = 8, P = G * G;
     const idx = (r, c) => r * G + c;
     const zeros = n => new Array(n).fill(0);
@@ -348,13 +390,15 @@
     const w0 = zeros(P), w1 = zeros(P); // smile, openness
     w0[idx(5, 1)] = 0.45; w0[idx(5, 6)] = 0.45; w0[idx(6, 1)] = 0.2; w0[idx(6, 6)] = 0.2; w0[idx(6, 3)] = -0.3; w0[idx(6, 4)] = -0.3;
     w1[idx(5, 3)] = 0.4; w1[idx(5, 4)] = 0.4;
-    // identity offsets (zero on mouth pixels -> orthogonal to col(W))
+    // identity offsets (zero on mouth pixels -> orthogonal to col(W)).
+    // Each eye's two pixels are the four-pixel walkthrough's exact identity
+    // vectors, top-to-bottom: A = [1, 0.6] (a_A), B = [0.6, 1] (a_B).
     function baseFace(kind) {
       const a = zeros(P);
       for (let c = 0; c < G; c++) { a[idx(0, c)] = 0.7; a[idx(7, c)] = 0.7; }
       for (let r = 0; r < G; r++) { a[idx(r, 0)] = 0.7; a[idx(r, 7)] = 0.7; }
       if (kind === 'A') { a[idx(2, 2)] = 1; a[idx(2, 5)] = 1; a[idx(3, 2)] = 0.6; a[idx(3, 5)] = 0.6; }
-      else { a[idx(2, 2)] = 0.95; a[idx(2, 5)] = 0.95; a[idx(1, 1)] = 0.35; a[idx(1, 6)] = 0.35; a[idx(1, 2)] = 0.2; a[idx(1, 5)] = 0.2; }
+      else { a[idx(2, 2)] = 0.6; a[idx(2, 5)] = 0.6; a[idx(3, 2)] = 1; a[idx(3, 5)] = 1; }
       for (const m of mouth) a[m] = 0;
       return a;
     }
@@ -378,6 +422,22 @@
       ctx.strokeStyle = highlight ? '#b14a2e' : 'rgba(0,0,0,0.12)'; ctx.lineWidth = highlight ? 3 : 1; ctx.strokeRect(1, 1, w - 2, h - 2);
     }
 
+    // "Meet the identities" reference strip: both faces at neutral expression
+    // (z = 0), with a dashed box around the eye region — the only pixels that
+    // differ between A and B, i.e. where identity lives.
+    (function drawIdentityRefs() {
+      const idA = document.getElementById('fs-idA'), idB = document.getElementById('fs-idB');
+      if (!idA || !idB) return;
+      const eyeBox = canvas => {
+        const ctx = canvas.getContext('2d'), cw = canvas.width / G, ch = canvas.height / G;
+        ctx.setLineDash([4, 3]); ctx.strokeStyle = '#b14a2e'; ctx.lineWidth = 1.5;
+        ctx.strokeRect(1 * cw + 1, 2 * ch + 1, 6 * cw - 2, 2 * ch - 2);   // rows 2–3, cols 1–6 (the eye pixels)
+        ctx.setLineDash([]);
+      };
+      drawFace(idA, render(aA, 0, 0), false); eyeBox(idA);
+      drawFace(idB, render(aB, 0, 0), false); eyeBox(idB);
+    })();
+
     function update() {
       const id = idSel.value; // 'A' or 'B'
       const z0 = parseFloat(smileInp.value), z1 = parseFloat(openInp.value);
@@ -389,6 +449,7 @@
       drawFace(srcCanvas, srcFace, false);
       drawFace(outACanvas, outA, id === 'B');        // highlight the SWAP target
       drawFace(outBCanvas, outB, id === 'A');
+      updateEnc(zhat);
       const swapName = id === 'A' ? 'B' : 'A';
       readout.innerHTML = 'source = <strong>' + id + '</strong> · shared encoder → z = (smile ' + zhat[0].toFixed(2) + ', open ' + zhat[1].toFixed(2) +
         ') · decoder <strong>' + swapName + '</strong> = the swap (same expression, ' + swapName + '’s identity)';
@@ -645,9 +706,10 @@
       const dH    = spread(5, 50, H - 50);
       const score = spread(1, H / 2, H / 2);
 
-      // bands
-      el('rect', { x: 44, y: 18, width: colX[2] - 44 + 24, height: H - 36, rx: 10, fill: 'rgba(31,29,26,0.05)', stroke: 'rgba(31,29,26,0.18)' }, svg);
-      el('text', { x: (44 + colX[2]) / 2, y: 34, 'text-anchor': 'middle', class: 'arch-band' }, svg, 'GENERATOR  G');
+      // bands — the G band stops BEFORE the x̂/real-x column: both samples sit
+      // between the networks, so "real x" clearly isn't produced by G
+      el('rect', { x: 44, y: 18, width: colX[2] - 44 - 26, height: H - 36, rx: 10, fill: 'rgba(31,29,26,0.05)', stroke: 'rgba(31,29,26,0.18)' }, svg);
+      el('text', { x: (44 + colX[2]) / 2 - 13, y: 34, 'text-anchor': 'middle', class: 'arch-band' }, svg, 'GENERATOR  G');
       el('rect', { x: colX[2] + 28, y: 18, width: colX[5] - colX[2] - 28 + 30, height: H - 36, rx: 10, fill: 'rgba(177,74,46,0.06)', stroke: 'rgba(177,74,46,0.22)' }, svg);
       el('text', { x: (colX[3] + colX[5]) / 2, y: 34, 'text-anchor': 'middle', class: 'arch-band' }, svg, 'DISCRIMINATOR  D');
 
@@ -656,17 +718,21 @@
       connect(colX[1], gH, colX[2], fake);
       connect(colX[2], fake, colX[3], dH, 'eA');
       connect(colX[3], dH, colX[4], score, 'eA');
-      // also: real data feeds D
-      const realY = [H - 36];
-      el('rect', { x: colX[2] - 9, y: realY[0] - 9, width: 18, height: 18, rx: 3, class: 'arch-node data' }, svg);
+      // also: real data feeds D — the first term of the objective, E_x[log D(x)].
+      // D trains on BOTH inputs (real -> 1, fake -> 0); G never sees real data.
+      // Two squares, matching the two-component fake x̂ above: D sees the WHOLE
+      // sample (x1 AND x2), not a summary of it.
+      const realY = [240, 272];
       connect(colX[2], realY, colX[3], dH, 'eA');
+      nodes(colX[2], realY, 'data');
 
       function nodes(x, ys, kind) { ys.forEach(y => { if (kind === 'data') el('rect', { x: x - 9, y: y - 9, width: 18, height: 18, rx: 3, class: 'arch-node data' }, svg); else el('circle', { cx: x, cy: y, r: kind === 'code' ? 12 : 9, class: 'arch-node ' + (kind === 'code' ? 'code' : 'neuron') }, svg); }); }
       nodes(colX[0], noise, 'data'); nodes(colX[1], gH, 'neuron'); nodes(colX[2], fake, 'code'); nodes(colX[3], dH, 'neuron'); nodes(colX[4], score, 'code');
 
       el('text', { x: colX[0], y: H - 8, 'text-anchor': 'middle', class: 'arch-label' }, svg, 'noise z');
       el('text', { x: colX[2], y: 96, 'text-anchor': 'middle', class: 'arch-label' }, svg, 'fake x̂');
-      el('text', { x: colX[2], y: realY[0] + 24, 'text-anchor': 'middle', class: 'arch-label' }, svg, 'real x');
+      el('text', { x: colX[2] - 16, y: 246, 'text-anchor': 'end', class: 'arch-label' }, svg, 'real x');
+      el('text', { x: colX[2] - 16, y: 262, 'text-anchor': 'end', class: 'arch-label' }, svg, '(x₁, x₂)');
       el('text', { x: colX[4], y: H / 2 - 18, 'text-anchor': 'middle', class: 'arch-label' }, svg, 'P(real)');
       // feedback arrow: D's verdict trains G
       el('path', { d: 'M ' + colX[4] + ' ' + (H / 2 + 16) + ' C ' + colX[4] + ' ' + (H - 14) + ', ' + colX[1] + ' ' + (H - 14) + ', ' + colX[1] + ' ' + (H - 60 + 18), fill: 'none', stroke: '#b14a2e', 'stroke-width': 1.6, 'stroke-dasharray': '5 4', 'marker-end': 'url(#gan-arrow)' }, svg);
@@ -985,7 +1051,7 @@
       'latent-space': {
         title: 'latent space',
         body:
-          '<p>A learned, lower-dimensional space where a generative model represents data as vectors — similar inputs sit close together, and directions often carry meaning (smiling, pose, lighting). You met it in Lab 11 as the residual stream; here it is the compressed code an autoencoder maps a face into and a decoder maps back out.</p>',
+          '<p>The model\'s private shorthand: instead of working with a million pixels, it describes each input as a short list of numbers (a "code"), and does its thinking there. Similar inputs get similar codes, and directions in code-land often mean something — one direction adds a smile, another turns the head. You met this in Lab 11 as the residual stream; here it is the code an autoencoder squeezes a face into and a decoder paints back out.</p>',
       },
       'generative-model': {
         title: 'generative model',
@@ -995,12 +1061,12 @@
       'denoiser': {
         title: 'denoiser',
         body:
-          '<p>A function that, given a noisy input and how much noise was added, estimates the clean original — formally the posterior mean <code>E[x₀ | xₜ]</code>. Diffusion models are <em>trained</em> denoisers; the 2D demo above uses the <em>exact</em> denoiser because we know the data distribution. Sampling = repeatedly denoise a little, lower the noise, repeat.</p>',
+          '<p>A function that, shown a noisy input and told how much noise was added, guesses the clean original. Its ideal answer is the average of every clean image that could have produced what it sees, weighted by how likely each is (§4.2 calls this the posterior mean, <code>E[x₀ | xₜ]</code>). Diffusion models are <em>trained</em> denoisers; the 2D demo at the top uses an <em>exact</em> one because we chose the data ourselves. Sampling = denoise a little, lower the noise, repeat.</p>',
       },
       'score-function': {
         title: 'score function',
         body:
-          '<p>The gradient of the log-density, <code>∇ₓ log p(x)</code> — it points "uphill" toward where data is more likely. Diffusion sampling follows the score from noise toward the data manifold. For a Gaussian mixture (the 2D demo) the score is closed-form; for images a network learns it.</p>',
+          '<p>The gradient of the log-density, <code>∇ₓ log p(x)</code> — the direction to nudge <code>x</code> so it looks more like real data ("uphill" in probability; <code>∇</code> is the gradient symbol nabla, not a delta). It is the denoiser\'s knowledge in different clothes: for Gaussian noise the ideal denoiser\'s <em>correction</em> gives the score exactly — <code>∇log p(x_σ) = (E[x₀|x_σ] − x_σ)/σ²</code> (Tweedie\'s formula) — and the noise guess is another rescaling, <code>ε̂ = −σ·∇log p</code>. That is why predicting the clean image, the noise, or the score are three views of one target. For the 2D demo the score is closed-form; for images a network learns it.</p>',
       },
     };
 
@@ -1043,5 +1109,435 @@
       hide();
     });
   })();
+
+  // ============================================================
+  // Widget · annotated code blocks (hover a line → explanation)
+  //   Same contract as lab-02: each .annotated-code holds one
+  //   <div class="code-step"> per source line. Hovering a line with
+  //   data-explain lights up its data-step peers and fills the panel
+  //   named by the block's data-panel attribute. Lines with class
+  //   "doc" render as string-colored (multi-line docstrings that a
+  //   per-line highlighter can't token-match).
+  // ============================================================
+  (function initAnnotatedCode() {
+    const KEYWORDS = new Set(['def','for','in','return','if','else','elif','None','True','False','and','or','not','lambda','class','import','from','as','with','while','break','continue','pass','yield','raise','try','except','finally']);
+    const BUILTINS = new Set(['range','len','zip','print','sum','enumerate','map','filter','list','dict','tuple','set','int','float','str','bool','abs','min','max','round','sorted','reversed']);
+    const escapeHtml = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    function highlight(text) {
+      const re = /(#[^\n]*)|(f'(?:[^'\\]|\\.)*'|f"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*")|(\b\d+(?:\.\d+)?(?:e-?\d+)?\b)|([A-Za-z_]\w*)/g;
+      let out = '', last = 0, m;
+      while ((m = re.exec(text)) !== null) {
+        if (m.index > last) out += escapeHtml(text.substring(last, m.index));
+        let cls = null;
+        if (m[1]) cls = 'comment';
+        else if (m[2]) cls = 'string';
+        else if (m[3]) cls = 'number';
+        else if (m[4]) {
+          const w = m[4];
+          if (KEYWORDS.has(w)) cls = 'keyword';
+          else if (BUILTINS.has(w)) cls = 'builtin';
+          else if (/^\s*\(/.test(text.substring(m.index + w.length))) cls = 'function';
+        }
+        out += cls ? '<span class="token ' + cls + '">' + escapeHtml(m[0]) + '</span>' : escapeHtml(m[0]);
+        last = m.index + m[0].length;
+      }
+      if (last < text.length) out += escapeHtml(text.substring(last));
+      return out;
+    }
+    document.querySelectorAll('.annotated-code').forEach(root => {
+      root.querySelectorAll('.code-step').forEach(el => {
+        el.innerHTML = el.classList.contains('doc')
+          ? '<span class="token string">' + escapeHtml(el.textContent) + '</span>'
+          : highlight(el.textContent);
+      });
+      const panel = document.getElementById(root.dataset.panel || '');
+      const tagEl = panel && panel.querySelector('.code-explain-tag');
+      const textEl = panel && panel.querySelector('.code-explain-text');
+      if (!tagEl || !textEl) return;
+      const defaultTag = tagEl.textContent, defaultText = textEl.innerHTML;
+      root.querySelectorAll('.code-step[data-explain]').forEach(el => {
+        const peers = root.querySelectorAll('.code-step[data-step="' + el.dataset.step + '"]');
+        el.addEventListener('mouseenter', () => {
+          peers.forEach(p => p.classList.add('active'));
+          tagEl.textContent = el.dataset.stepName || el.dataset.step;
+          textEl.innerHTML = el.dataset.explain;
+          // KaTeX auto-render ran once at load; injected $...$ needs its own pass
+          if (window.renderMathInElement) {
+            renderMathInElement(textEl, { delimiters: [{ left: '$', right: '$', display: false }] });
+          }
+        });
+        el.addEventListener('mouseleave', () => {
+          peers.forEach(p => p.classList.remove('active'));
+          tagEl.textContent = defaultTag;
+          textEl.innerHTML = defaultText;
+        });
+      });
+    });
+  })();
+
+  // ============================================================
+  // Widget · §2.2 why L2 loves the blurry average
+  //   Two plausible sharp pixel values; drag one prediction and
+  //   watch expected L2 bottom out at their (blurry) mean.
+  // ============================================================
+  (function initL2Blur() {
+    const canvas = document.getElementById('l2-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const slider = document.getElementById('l2-pred');
+    const valEl = document.getElementById('l2-pred-val');
+    const readout = document.getElementById('l2-readout');
+    const M = [0.2, 0.8];
+    const loss = p => 0.5 * (p - M[0]) ** 2 + 0.5 * (p - M[1]) ** 2;
+    const W = canvas.width, H = canvas.height, mx = 42, axisY = H - 44;
+    const X = v => mx + v * (W - 2 * mx);
+    const maxL = loss(0);
+    const Y = L => axisY - 16 - (L / maxL) * (axisY - 66);
+    function draw() {
+      const p = parseFloat(slider.value);
+      ctx.clearRect(0, 0, W, H);
+      ctx.strokeStyle = '#c9c3b6'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(mx, axisY); ctx.lineTo(W - mx, axisY); ctx.stroke();
+      ctx.strokeStyle = '#8a857d'; ctx.lineWidth = 1.5; ctx.beginPath();
+      for (let i = 0; i <= 100; i++) { const v = i / 100, x = X(v), y = Y(loss(v)); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+      ctx.stroke();
+      ctx.setLineDash([4, 4]); ctx.strokeStyle = '#b14a2e'; ctx.beginPath();
+      ctx.moveTo(X(0.5), axisY); ctx.lineTo(X(0.5), Y(loss(0.5))); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = '#3f8c63';
+      for (const m of M) { ctx.beginPath(); ctx.arc(X(m), axisY, 6, 0, 7); ctx.fill(); }
+      ctx.fillStyle = '#4a4742'; ctx.font = '12px -apple-system, sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('dark strand 0.2', X(0.2), axisY + 18);
+      ctx.fillText('bright skin 0.8', X(0.8), axisY + 18);
+      ctx.fillStyle = '#b14a2e';
+      ctx.fillText('the blurry mean', X(0.5), Y(loss(0.5)) - 10);
+      ctx.fillStyle = '#1f1d1a';
+      ctx.beginPath(); ctx.arc(X(p), Y(loss(p)), 6, 0, 7); ctx.fill();
+      ctx.beginPath(); ctx.arc(X(p), axisY, 4, 0, 7); ctx.fill();
+      valEl.textContent = p.toFixed(2);
+      const dNear = Math.min(Math.abs(p - M[0]), Math.abs(p - M[1]));
+      readout.innerHTML = Math.abs(p - 0.5) < 0.02
+        ? 'expected L2 = <strong>' + loss(p).toFixed(3) + '</strong> — the minimum. But the distance to the nearest sharp answer is now at its <em>maximum</em> (0.30): L2’s favorite output is the most obviously unreal one.'
+        : 'expected L2 = <strong>' + loss(p).toFixed(3) + '</strong> · distance to nearest sharp answer = ' + dNear.toFixed(2);
+    }
+    slider.addEventListener('input', draw);
+    draw();
+  })();
+
+  // ============================================================
+  // Widget · §3.1 hover-to-explain minimax equation
+  //   Each .eq-part carries a data-eq key; hover/focus/tap swaps
+  //   the explanation into the shared panel. Injected text can
+  //   contain $...$ — KaTeX auto-render ran once at load, so we
+  //   re-render the panel on every swap.
+  // ============================================================
+  (function initMinimaxEq() {
+    const root = document.getElementById('minimax-eq');
+    if (!root) return;
+    const tag = document.getElementById('minimax-eq-tag');
+    const text = document.getElementById('minimax-eq-text');
+    const EXPLAIN = {
+      ming: {
+        t: 'min over G · the generator’s move',
+        b: 'The outer player. $G$ picks its weights to make the whole value as <em>small</em> as possible — but it appears only inside the right-hand term, through its fakes $G(z)$. Making that term small means pushing $D(G(z))$ toward $1$: the critic fooled.'
+      },
+      maxd: {
+        t: 'max over D · the critic’s move, nested inside',
+        b: 'For whatever $G$ does, $D$ best-responds: pick critic weights that make the value as <em>big</em> as possible. Read the equation inside-out — the critic sharpens first, then the generator plans against the sharpened critic. The alternating training loop below approximates this nesting one step at a time.'
+      },
+      real: {
+        t: 'E over real data · score the real samples',
+        b: 'Read $\\mathbb{E}_{x\\sim\\text{data}}[\\cdot]$ as “the average of the bracket when $x$ is drawn at random from the real data” — $\\sim$ means “distributed as.” $D(x)$ is the critic’s probability that the sample is real, so the term is the average log-score on real data, largest when the critic calls real real ($D(x)\\to 1$). In code it is a minibatch mean: <code>mean(log D(x)) over a real batch</code>. <strong>Only $D$ controls this term</strong> — the generator never touches real data.'
+      },
+      plus: {
+        t: '+ · two halves of one log-loss',
+        b: 'The sum makes $\\max_D$ exactly binary cross-entropy with labels real $= 1$, fake $= 0$: the critic is an ordinary logistic classifier trained by maximum likelihood. That is one of the reasons for the logs — see the “why the log?” callout below.'
+      },
+      fake: {
+        t: 'E over noise · score the fakes — the contested term',
+        b: 'Same $\\mathbb{E}$ grammar as the real term, but now the random draw is noise: average over $z \\sim \\mathcal{N}$ (a fresh fake per draw). Inside-out: $z$ is a noise draw, $G(z)$ is the fake built from it, $D(G(z))$ is the critic’s realness verdict on that fake, and $1 - D(G(z))$ is the probability it assigns to “this is fake.” $D$ wants the term big (catch every fake); $G$ wants it small (get called real). <strong>Both players touch this term</strong> — the adversarial game lives here.'
+      }
+    };
+    const parts = root.querySelectorAll('.eq-part');
+    function show(part) {
+      const e = EXPLAIN[part.dataset.eq];
+      if (!e) return;
+      parts.forEach(p => p.classList.toggle('active', p === part));
+      tag.textContent = e.t;
+      text.innerHTML = e.b;
+      if (window.renderMathInElement) {
+        renderMathInElement(text, { delimiters: [{ left: '$', right: '$', display: false }] });
+      }
+    }
+    parts.forEach(p => {
+      p.addEventListener('mouseenter', () => show(p));
+      p.addEventListener('focus', () => show(p));
+      p.addEventListener('click', () => show(p));
+    });
+  })();
+
+  // ============================================================
+  // Widget · §3.1 non-saturating loss explorer
+  //   Both generator loss curves over p = D(G(z)), with tangent
+  //   segments at the chosen p — the tangent's steepness IS the
+  //   push. Curves drawn once; dots/tangents/readout on input.
+  // ============================================================
+  (function initNonSatLoss() {
+    const svg = document.getElementById('ns-svg');
+    if (!svg) return;
+    const slider = document.getElementById('ns-p');
+    const pVal = document.getElementById('ns-p-val');
+    const readout = document.getElementById('ns-readout');
+    const NS = 'http://www.w3.org/2000/svg';
+    const mk = (tag, attrs, parent) => { const el = document.createElementNS(NS, tag); for (const k in attrs) el.setAttribute(k, attrs[k]); (parent || svg).appendChild(el); return el; };
+    const X0 = 50, X1 = 430, Y0 = 24, VMIN = -5, YS = 186 / 5;
+    const px = p => X0 + (X1 - X0) * p;
+    const py = v => Y0 + (-v) * YS;
+    // frame + axis labels
+    mk('line', { x1: X0, y1: Y0, x2: X1, y2: Y0, stroke: 'rgba(31,29,26,0.25)' });
+    mk('line', { x1: X0, y1: Y0, x2: X0, y2: py(VMIN), stroke: 'rgba(31,29,26,0.25)' });
+    mk('text', { x: X0 - 8, y: Y0 + 4, 'text-anchor': 'end', class: 'arch-label' }).textContent = '0';
+    mk('text', { x: X0 - 8, y: py(VMIN) + 4, 'text-anchor': 'end', class: 'arch-label' }).textContent = '−5';
+    mk('text', { x: X0, y: py(VMIN) + 18, 'text-anchor': 'middle', class: 'arch-label' }).textContent = 'p = 0';
+    mk('text', { x: px(0.5), y: py(VMIN) + 18, 'text-anchor': 'middle', class: 'arch-label' }).textContent = '½';
+    mk('text', { x: X1, y: py(VMIN) + 18, 'text-anchor': 'middle', class: 'arch-label' }).textContent = 'p = 1';
+    // static curves
+    function curvePath(f, pa, pb) {
+      let d = '';
+      for (let p = pa; p <= pb + 1e-9; p += 0.004) {
+        d += (d ? 'L' : 'M') + px(p).toFixed(1) + ' ' + py(Math.max(VMIN, f(p))).toFixed(1) + ' ';
+      }
+      return d;
+    }
+    mk('path', { d: curvePath(p => Math.log(1 - p), 0.005, 1 - Math.exp(-5)), fill: 'none', stroke: '#8a857d', 'stroke-width': 2 });
+    mk('path', { d: curvePath(Math.log, Math.exp(-5), 0.995), fill: 'none', stroke: '#b14a2e', 'stroke-width': 2 });
+    // dynamic layer, clipped to the plot area so tangents can't escape
+    const defs = mk('defs', {});
+    const clip = mk('clipPath', { id: 'ns-clip' }, defs);
+    mk('rect', { x: X0 - 2, y: Y0 - 6, width: X1 - X0 + 34, height: py(VMIN) - Y0 + 12 }, clip);
+    const dyn = mk('g', { 'clip-path': 'url(#ns-clip)' });
+    function update() {
+      const p = parseFloat(slider.value);
+      pVal.textContent = p.toFixed(2);
+      while (dyn.firstChild) dyn.removeChild(dyn.firstChild);
+      mk('line', { x1: px(p), y1: Y0, x2: px(p), y2: py(VMIN), stroke: 'rgba(31,29,26,0.3)', 'stroke-dasharray': '4 3' }, dyn);
+      // one entry per loss curve: value, slope d/dp, color
+      const items = [
+        { v: Math.log(1 - p), m: -1 / (1 - p), color: '#8a857d' },
+        { v: Math.log(p), m: 1 / p, color: '#b14a2e' }
+      ];
+      for (const it of items) {
+        const cx = px(p), cy = py(Math.max(VMIN, it.v));
+        // tangent: pixel-space direction (dx/dp, dpy/dp) = (X1-X0, -m*YS), normalized to ±34px
+        let dx = X1 - X0, dy = -it.m * YS;
+        const len = Math.hypot(dx, dy); dx = dx / len * 34; dy = dy / len * 34;
+        mk('line', { x1: cx - dx, y1: cy - dy, x2: cx + dx, y2: cy + dy, stroke: it.color, 'stroke-width': 3, 'stroke-linecap': 'round', opacity: 0.85 }, dyn);
+        mk('circle', { cx, cy, r: 5, fill: it.color }, dyn);
+      }
+      const mMM = 1 / (1 - p), mNS = 1 / p, ratio = (1 - p) / p;
+      let note;
+      if (p <= 0.15) note = 'this is where early training lives — the fix shouts, minimax whispers.';
+      else if (p < 0.5) note = 'the fakes are still being caught; the fix still pushes harder.';
+      else note = 'G is winning — minimax is the steeper one now, but the coaching is no longer needed.';
+      readout.innerHTML = 'at grade p = ' + p.toFixed(2) +
+        ' · volume from log(1−p) = <strong>' + mMM.toFixed(2) + '</strong>' +
+        ' · from log p = <strong>' + mNS.toFixed(1) + '</strong>' +
+        (ratio >= 1 ? ' — the fix is <strong>' + ratio.toFixed(0) + '×</strong> louder · ' : ' · ') + note;
+    }
+    slider.addEventListener('input', update);
+    document.getElementById('ns-early').addEventListener('click', () => { slider.value = 0.01; update(); });
+    update();
+  })();
+
+  // ============================================================
+  // Widget · §7.2 classifier-free guidance on a two-word world
+  //   Two labeled clusters ("cat" left, "dog" right). Exact GMM
+  //   denoisers (same posterior-mean math as the top demo):
+  //   conditional = chosen cluster only, unconditional = all data.
+  //   Guided guess: x0_u + s*(x0_c - x0_u), run through DDIM.
+  // ============================================================
+  (function initGuidedDiffusion() {
+    const canvas = document.getElementById('gd-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const promptSel = document.getElementById('gd-prompt');
+    const sInp = document.getElementById('gd-s');
+    const sVal = document.getElementById('gd-s-val');
+    const goBtn = document.getElementById('gd-go');
+    const readout = document.getElementById('gd-readout');
+
+    const S0 = 0.05, SIGMA_MAX = 1.3, SIGMA_MIN = 0.02, N = 200, STEPS = 40;
+    function ringPts(cx, cy, r, n) {
+      const pts = [];
+      for (let i = 0; i < n; i++) { const a = (i / n) * 2 * Math.PI; pts.push({ x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) }); }
+      return pts;
+    }
+    const CAT = ringPts(-0.55, 0.05, 0.26, 14);
+    const DOG = ringPts(0.55, 0.05, 0.26, 14);
+    const ALL = CAT.concat(DOG);
+    const SETS = { cat: CAT, dog: DOG };
+
+    // exact posterior mean E[x0 | x, sigma] for a uniform GMM on pts
+    function denoiseSet(px, py, sigma, pts) {
+      const v = S0 * S0 + sigma * sigma;
+      let max = -Infinity;
+      const logits = new Array(pts.length);
+      for (let k = 0; k < pts.length; k++) {
+        const dx = px - pts[k].x, dy = py - pts[k].y;
+        const l = -(dx * dx + dy * dy) / (2 * v);
+        logits[k] = l; if (l > max) max = l;
+      }
+      let sum = 0;
+      for (let k = 0; k < pts.length; k++) { logits[k] = Math.exp(logits[k] - max); sum += logits[k]; }
+      let mx = 0, my = 0;
+      for (let k = 0; k < pts.length; k++) { const r = logits[k] / sum; mx += r * pts[k].x; my += r * pts[k].y; }
+      return [mx, my];
+    }
+    function guidedX0(px, py, sigma, condPts, s) {
+      const u = denoiseSet(px, py, sigma, ALL);
+      const c = denoiseSet(px, py, sigma, condPts);
+      return [u[0] + s * (c[0] - u[0]), u[1] + s * (c[1] - u[1])];
+    }
+    function randn() {
+      let u = 0, w = 0;
+      while (u === 0) u = Math.random();
+      while (w === 0) w = Math.random();
+      return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * w);
+    }
+    function geomSigmas() {
+      const arr = [];
+      for (let i = 0; i < STEPS; i++) {
+        const t = i / (STEPS - 1);
+        arr.push(Math.exp(Math.log(SIGMA_MAX) * (1 - t) + Math.log(SIGMA_MIN) * t));
+      }
+      arr.push(0);
+      return arr;
+    }
+
+    const VB = 2.6;
+    function toPx(x, y) { const w = canvas.width, h = canvas.height; return [(x + VB / 2) / VB * w, h - (y + VB / 2) / VB * h]; }
+
+    let particles = [], sigmas = [], stepIdx = 0, raf = null;
+
+    function draw() {
+      const w = canvas.width, h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+      const tint = (pts, color) => {
+        ctx.fillStyle = color;
+        for (const p of pts) { const [sx, sy] = toPx(p.x, p.y); ctx.beginPath(); ctx.arc(sx, sy, 2.4, 0, 2 * Math.PI); ctx.fill(); }
+      };
+      tint(CAT, 'rgba(177,74,46,0.3)');
+      tint(DOG, 'rgba(47,125,110,0.3)');
+      ctx.font = '600 13px system-ui, sans-serif'; ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(177,74,46,0.8)'; ctx.fillText('"cat"', toPx(-0.55, -0.38)[0], toPx(-0.55, -0.38)[1]);
+      ctx.fillStyle = 'rgba(47,125,110,0.8)'; ctx.fillText('"dog"', toPx(0.55, -0.38)[0], toPx(0.55, -0.38)[1]);
+      ctx.fillStyle = 'rgba(31,29,26,0.82)';
+      for (const p of particles) { const [sx, sy] = toPx(p.x, p.y); ctx.beginPath(); ctx.arc(sx, sy, 2.6, 0, 2 * Math.PI); ctx.fill(); }
+    }
+
+    function finish() {
+      const prompt = promptSel.value, target = SETS[prompt];
+      let obey = 0;
+      const counts = new Array(target.length).fill(0);
+      for (const p of particles) {
+        const dCat = Math.hypot(p.x + 0.55, p.y - 0.05), dDog = Math.hypot(p.x - 0.55, p.y - 0.05);
+        if ((prompt === 'cat' ? dCat : dDog) <= (prompt === 'cat' ? dDog : dCat)) obey++;
+        let bi = 0, bd = Infinity;
+        target.forEach((q, i) => { const d = Math.hypot(p.x - q.x, p.y - q.y); if (d < bd) { bd = d; bi = i; } });
+        counts[bi]++;
+      }
+      const covered = counts.filter(c => c > 0).length;
+      readout.innerHTML = '<span class="df-done">✓ sampled</span> · s = ' + parseFloat(sInp.value).toFixed(2) +
+        ' · <strong>' + Math.round(100 * obey / particles.length) + '%</strong> landed on "' + prompt + '"' +
+        ' · cluster coverage <strong>' + covered + '/' + target.length + '</strong> points' +
+        (covered < target.length ? ' — the missing ones face the other word' : '');
+    }
+
+    function tick() {
+      if (stepIdx >= sigmas.length - 1) { raf = null; draw(); finish(); return; }
+      const sig = sigmas[stepIdx], sigN = sigmas[stepIdx + 1];
+      const s = parseFloat(sInp.value), condPts = SETS[promptSel.value];
+      for (const p of particles) {
+        const x0 = guidedX0(p.x, p.y, sig, condPts, s);
+        p.x = x0[0] + (sigN / sig) * (p.x - x0[0]);
+        p.y = x0[1] + (sigN / sig) * (p.y - x0[1]);
+      }
+      stepIdx++;
+      draw();
+      readout.innerHTML = 'step ' + stepIdx + '/' + (sigmas.length - 1) + ' · σ = ' + sigN.toFixed(3) + ' · denoise twice (with and without the prompt) → blend → step';
+      raf = requestAnimationFrame(tick);
+    }
+
+    function go() {
+      if (raf) cancelAnimationFrame(raf);
+      particles = [];
+      for (let i = 0; i < N; i++) particles.push({ x: randn() * SIGMA_MAX, y: randn() * SIGMA_MAX });
+      sigmas = geomSigmas(); stepIdx = 0;
+      raf = requestAnimationFrame(tick);
+    }
+
+    sInp.addEventListener('input', () => { sVal.textContent = parseFloat(sInp.value).toFixed(2); });
+    goBtn.addEventListener('click', go);
+    draw();
+    readout.innerHTML = 'pick a prompt and a guidance scale, then press <strong>Generate</strong>';
+  })();
+
+  // ============================================================
+  // Widget · §4.3 DDIM stepper on a number line
+  //   The callout's exact toy numbers, animated one press at a time:
+  //   x0=0.8, x starts at 0.2, σ schedule 0.5→0.3→0.15→0.05→0.
+  // ============================================================
+  (function initDdimStepper() {
+    const canvas = document.getElementById('ddim-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const stepBtn = document.getElementById('ddim-step-btn');
+    const resetBtn = document.getElementById('ddim-reset');
+    const readout = document.getElementById('ddim-readout');
+    const SIG = [0.5, 0.3, 0.15, 0.05, 0], X0 = 0.8;
+    const W = canvas.width, H = canvas.height, mx = 42, axisY = H - 48;
+    const PX = v => mx + v * (W - 2 * mx);
+    let x, k, trail;
+    function draw() {
+      ctx.clearRect(0, 0, W, H);
+      ctx.strokeStyle = '#c9c3b6'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(mx, axisY); ctx.lineTo(W - mx, axisY); ctx.stroke();
+      ctx.fillStyle = '#8a857d'; ctx.font = '11px -apple-system, sans-serif'; ctx.textAlign = 'center';
+      for (const t of [0, 0.2, 0.4, 0.6, 0.8, 1]) {
+        ctx.beginPath(); ctx.moveTo(PX(t), axisY - 3); ctx.lineTo(PX(t), axisY + 3); ctx.stroke();
+        ctx.fillText(t.toFixed(1), PX(t), axisY + 18);
+      }
+      ctx.fillStyle = '#3f8c63';
+      ctx.beginPath(); ctx.arc(PX(X0), axisY, 7, 0, 7); ctx.fill();
+      ctx.font = '12px -apple-system, sans-serif';
+      ctx.fillText('x̂0 (clean)', PX(X0), axisY - 40);
+      // ghost trail of previous positions
+      for (let i = 0; i < trail.length - 1; i++) {
+        ctx.fillStyle = 'rgba(31,29,26,' + (0.15 + 0.35 * i / Math.max(1, trail.length - 1)) + ')';
+        ctx.beginPath(); ctx.arc(PX(trail[i]), axisY, 5, 0, 7); ctx.fill();
+      }
+      ctx.fillStyle = '#1f1d1a';
+      ctx.beginPath(); ctx.arc(PX(x), axisY, 7, 0, 7); ctx.fill();
+      ctx.fillText('x = ' + x.toFixed(2) + '  ·  σ = ' + SIG[k].toFixed(2), PX(x), axisY - 22);
+    }
+    function reset() {
+      x = 0.2; k = 0; trail = [0.2]; stepBtn.disabled = false;
+      draw();
+      readout.innerHTML = 'σ = 0.50 · x = 0.20 — the noised pixel from the walkthrough. Press <strong>Step</strong>.';
+    }
+    function step() {
+      if (k >= SIG.length - 1) return;
+      const s = SIG[k], sn = SIG[k + 1];
+      const nx = X0 + (sn / s) * (x - X0);
+      readout.innerHTML = 'x ← 0.8 + (' + sn.toFixed(2) + '/' + s.toFixed(2) + ')·(' + x.toFixed(2) + ' − 0.8) = <strong>' + nx.toFixed(2) + '</strong>' +
+        (sn === 0 ? ' — σ hit 0: nothing of the gap is kept, x lands exactly on the clean value.' : ' · kept ' + Math.round((sn / s) * 100) + '% of the remaining gap');
+      x = nx; k++; trail.push(x);
+      draw();
+      if (k >= SIG.length - 1) stepBtn.disabled = true;
+    }
+    stepBtn.addEventListener('click', step);
+    resetBtn.addEventListener('click', reset);
+    reset();
+  })();
+
 
 })();
