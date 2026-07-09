@@ -509,8 +509,10 @@ apptainer exec --nv "$CONTAINERDIR/pytorch-2.11.0.sif" python faceswap.py --a 7 
   <p class="keep-in-present"><strong>The idea, scaled up:</strong> the same generator-vs-discriminator game you just watched on the 2D ring, now painting 64×64 faces. G turns random noise into a face; D judges real vs. fake; they co-adapt until G's faces pass. No labels, no target image — the only signal is D's verdict.</p>
   <p class="keep-in-present">On the cluster, <code>gan_faces.py</code> trains both networks on the shipped faces and writes 16 generated people. It also saves <code>gan_fakes.npz</code> — a batch of its fakes that your §6 detector will later try to catch.</p>
   <pre><code class="language-bash"># same setup as §2: the script + faces_all.npz live in ~/lab-20 on the cluster
-sbatch run_hpc.slurm gan_faces.py --steps 4000     # train G and D on a GPU
-squeue --me
+srun -A ds6042 -p interactive --gres=gpu:a100:1 -c 4 --mem=16G -t 01:00:00 --pty bash
+# prompt changes from login node to a udc-* compute node — you're on the GPU machine
+module load apptainer/1.4.5 pytorch/2.11.0
+apptainer exec --nv "$CONTAINERDIR/pytorch-2.11.0.sif" python gan_faces.py --steps 4000
 scp &lt;id&gt;@login.hpc.virginia.edu:~/lab-20/gan_samples.png .   # from your laptop</code></pre>
   <p class="keep-in-present hpc-look"><strong>What to look for:</strong> 16 <em>different</em> faces — varied identities, some with glasses. If instead you see the same face 16 times, you've caught <strong>mode collapse</strong> live: G found one face that fools D and stopped exploring. Re-run with fewer steps to watch faces emerge from static.</p>
   <figure class="hpc-example">
