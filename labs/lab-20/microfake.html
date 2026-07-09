@@ -55,6 +55,13 @@
   <p class="byline">The same spirit as <a href="../lab-02/microgpt.html">Lab 02 · microgpt</a>: take the thing apart, rebuild it in front of you with toy numbers you can hand-trace, and run it in your browser. Here the "thing" is a generative image (and video) model — the engine behind every deepfake.</p>
 </header>
 
+<div class="callout note">
+  <span class="label">before you start · work from a terminal</span>
+  <p>Most of this lab runs on UVA's HPC (Rivanna), so we work from the command line. Open a terminal — <strong>PowerShell</strong> or <strong>WSL</strong> on Windows, or the <strong>Terminal</strong> app on macOS — and SSH into a login node (use your own UVA computing ID, and approve the Duo push):</p>
+  <pre><code class="language-bash">ssh your-computing-id@login.hpc.virginia.edu</code></pre>
+  <p class="keep-in-present">Everything below assumes you're at that shell prompt.</p>
+</div>
+
 <p class="lede">
 A deepfake is not magic. It is the output of a <strong><span class="gloss" data-gloss="generative-model">generative model</span></strong> — a system that studies thousands of real faces (or voices, or video frames) until it can produce <strong>brand-new ones that never existed</strong>. This lab builds that machinery from nothing, three ideas in the order they were invented: <strong>autoencoders</strong> (the original 2017 face-swap), <strong>GANs</strong> (two networks locked in a forgery game), and <strong>diffusion</strong> (the engine inside today's image generators) — then adds time, to make <em>video</em>. Every idea comes with a toy you can run and numbers you can trace by hand. And we finish on the other side of the fight: how to <em>detect</em> what we just learned to fake.
 </p>
