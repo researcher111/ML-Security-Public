@@ -71,8 +71,10 @@ pair and pass their indices:
 
 ```bash
 # quick interactive run instead of a batch job:
+# Request an A100 (gpu:a100:1). The pytorch/2.11.0 container has no CUDA kernels
+# for the older V100s (CC 7.0) and crashes on one with "no kernel image is available".
 module load apptainer/1.4.5 pytorch/2.11.0
-srun -A ds6042 -p interactive --gres=gpu:1 -c 4 --mem=16G -t 00:15:00 \
+srun -A ds6042 -p interactive --gres=gpu:a100:1 -c 4 --mem=16G -t 00:15:00 \
   apptainer exec --nv "$CONTAINERDIR/pytorch-2.11.0.sif" \
   python faceswap.py --a 3 --b 30 --out swap_3_30.png
 ```
@@ -83,5 +85,5 @@ failure the regularization fixes), `--zdim` (bottleneck width, default 128).
 
 ## No GPU / just want to read the code
 
-It runs on CPU too (about a minute) — drop `--nv` and the `--gres=gpu:1`, or run
+It runs on CPU too (about a minute) — drop `--nv` and the `--gres=gpu:a100:1`, or run
 it anywhere you have `torch` installed. The GPU only makes it instant.
